@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Таймлайн конфликтов в Африке</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/scrollama"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Times New Roman', Georgia, serif;
+            background-color: #f5f3f0;
+            color: #1e1e1e;
+        }
+        #intro {
+            max-width: 800px;
+            margin: 3rem auto 2rem auto;
+            padding: 0 1.5rem;
+            text-align: center;
+            font-size: 1.2rem;
+            line-height: 1.6;
+            color: #2c3e50;
+            border-bottom: 1px solid #d0cbc4;
+            padding-bottom: 2rem;
+        }
+        #intro h1 {
+            font-weight: 400;
+            font-size: 2.2rem;
+            letter-spacing: -0.5px;
+            margin-bottom: 0.75rem;
+            color: #1e2b37;
+        }
+        #chart {
+            position: sticky;
+            top: 1.5rem;
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            height: 500px;
+            background: #fffcf8;
+            border-radius: 24px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.05);
+            border: 1px solid #e8e0d5;
+            z-index: 10;
+        }
+        .spacer {
+            height: 20vh;
+        }
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.8rem;
+            justify-content: center;
+            margin-top: 1rem;
+            font-family: 'Times New Roman', serif;
+            font-size: 1rem;
+            color: #3a4a5a;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .legend-color {
+            width: 18px;
+            height: 18px;
+            border-radius: 10px;
+            opacity: 0.7;
+        }
+        footer {
+            text-align: center;
+            padding: 3rem 1rem 2rem;
+            color: #7f8c8d;
+            font-size: 0.95rem;
+            border-top: 1px solid #e0d8cf;
+            margin-top: 3rem;
+        }
+        /* убираем старые шаги, они больше не нужны */
+        .steps-container {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="intro">
+        <h1>Хронология эскалаций</h1>
+        <p>Шесть вооружённых конфликтов в Африке. Каждая полоса — год до точки эскалации (●).</p>
+        <p>Прокрутите вниз — строки будут появляться одна за другой.</p>
+    </div>
+
+    <!-- Контейнер для таймлайна -->
+    <div id="chart"></div>
+    <div class="spacer"></div>
+    <div class="legend" id="legend"></div>
+    <footer>данные: открытые источники · визуализация: d3 + scrollama</footer>
+
+    <script>
+        (function() {
+            // Данные конфликтов (год, месяц-1, день)
+            const conflicts = [
+                { name: 'Судан', t0: new Date(2023, 3, 15) },      // 15 апреля 2023
+                { name: 'ДР Конго', t0: new Date(2022, 2, 28) },   // 28 марта 2022
+                { name: 'Сомали', t0: new Date(2022, 5, 1) },      // 1 июня 2022
+                { name: 'Мали', t0: new Date(2020, 7, 18) },       // 18 августа 2020
+                { name: 'Нигер', t0: new Date(2023, 6, 26) },      // 26 июля 2023
+                { name: 'Буркина-Фасо', t0: new Date(2022, 0, 24) } // 24 января 2022
+            ];
+
+            // Цвета (приглушённые, благородные)
+            const colors = ['#b33e40', '#3d6e91', '#4e8d5c', '#9b6b8f', '#cc7f4b', '#a0674b'];
+
+            // Вычисляем start = t0 - 12 месяцев
+            conflicts.forEach(d => {
+                d.start = new Date(d.t0);
+                d.start.setMonth(d.start.getMonth() - 12);
+                d.end = d.t0;
+            });
+
+            // Определяем глобальный диапазон дат
+            const minDate = d3.min(conflicts.map(d => d.start));
+            const maxDate = d3.max(conflicts.map(d => d.end));
+            // Добавим отступ 5% слева и справа
+            const timeRange = maxDate - minDate;
+            const pad = timeRange * 0.05;
+            const xMin = new Date(minDate - pad);
+            const xMax = new Date(maxDate + pad);
+
+            // Размеры
+            const width = document.getElementById('chart').clientWidth;
+            const height = 500;
+            const margin = { top: 70, right: 100, bottom: 50, left: 120 };
+            const innerWidth = width - margin.left - margin.right;
+            const innerHeight = height - margin.top - margin.bottom;
+
+            const svg = d3.select("#chart")
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // Шкала времени
+            const xScale = d3.scaleTime()
+                .domain([xMin, xMax])
+                .range([0, innerWidth]);
+
+            // Ось времени
+            const xAxis = d3.axisTop(xScale)  // ось сверху, чтобы не мешалась
+                .ticks(8)
+                .tickFormat(d3.timeFormat("%b %Y"));
+
+            svg.append("g")
+                .attr("class", "x-axis")
+                .call(xAxis)
+                .style("font-size", "13px")
+                .style("font-family", "Times New Roman, serif")
+                .style("color", "#4a4a4a");
+
+            // Подпись оси
+            svg.append("text")
+                .attr("x", innerWidth / 2)
+                .attr("y", -20)
+                .attr("text-anchor", "middle")
+                .style("fill", "#5d6d7e")
+                .style("font-size", "14px")
+                .style("font-family", "Times New Roman, serif")
+                .text("временная шкала");
+
+            // Создаём группы для каждой строки (конфликта) — изначально скрыты
+            const rowHeight = 50;
+            const yPos = (i) => i * rowHeight + 20;  // вертикальная позиция строки
+
+            const rows = svg.selectAll(".row")
+                .data(conflicts)
+                .enter()
+                .append("g")
+                .attr("class", "row")
+                .attr("data-idx", (d, i) => i)
+                .style("opacity", 0);  // все скрыты
+
+            // Названия стран слева
+            rows.append("text")
+                .attr("x", -10)
+                .attr("y", (d, i) => yPos(i) + 22)
+                .attr("text-anchor", "end")
+                .style("font-size", "16px")
+                .style("font-weight", "400")
+                .style("font-family", "Times New Roman, serif")
+                .style("fill", "#2c3e50")
+                .text(d => d.name);
+
+            // Полупрозрачный прямоугольник (окно)
+            rows.append("rect")
+                .attr("x", d => xScale(d.start))
+                .attr("y", (d, i) => yPos(i))
+                .attr("width", d => xScale(d.end) - xScale(d.start))
+                .attr("height", 32)
+                .attr("rx", 8)
+                .attr("ry", 8)
+                .attr("fill", (d, i) => colors[i % colors.length])
+                .attr("fill-opacity", 0.25)
+                .attr("stroke", (d, i) => colors[i])
+                .attr("stroke-width", 1.2)
+                .attr("stroke-opacity", 0.6);
+
+            // Точка эскалации
+            rows.append("circle")
+                .attr("cx", d => xScale(d.t0))
+                .attr("cy", (d, i) => yPos(i) + 16)
+                .attr("r", 8)
+                .attr("fill", (d, i) => colors[i])
+                .attr("stroke", "white")
+                .attr("stroke-width", 2);
+
+            // Подписи дат (опционально — можно добавить)
+            rows.append("text")
+                .attr("x", d => xScale(d.t0) + 12)
+                .attr("y", (d, i) => yPos(i) + 12)
+                .style("font-size", "11px")
+                .style("font-family", "Times New Roman, serif")
+                .style("fill", "#3a3a3a")
+                .text(d => d.t0.toLocaleDateString('ru', { day: 'numeric', month: 'short', year: 'numeric' }));
+
+            // Легенда (создаём отдельно, внизу)
+            const legendDiv = document.getElementById('legend');
+            conflicts.forEach((d, i) => {
+                const item = document.createElement('div');
+                item.className = 'legend-item';
+                item.innerHTML = `<span class="legend-color" style="background:${colors[i]}; opacity:0.6;"></span><span>${d.name}</span>`;
+                legendDiv.appendChild(item);
+            });
+
+            // Scrollama
+            const scroller = scrollama();
+
+            // Функция обновления видимости по индексу шага
+            function showRows(stepIndex) {
+                // stepIndex: 0,1,2,3,4,5
+                // Для stepIndex=0 показываем только Судан (idx 0)
+                // stepIndex=1: Судан + ДР Конго (0,1)
+                // stepIndex=2: добавляем Сомали (0,1,2)
+                // stepIndex=3: +Мали
+                // stepIndex=4: +Нигер
+                // stepIndex=5: +Буркина-Фасо
+                const visibleIndices = [];
+                for (let i = 0; i <= stepIndex; i++) {
+                    visibleIndices.push(i);
+                }
+
+                rows.style("opacity", (d, i) => visibleIndices.includes(i) ? 1 : 0);
+            }
+
+            function handleStepEnter(response) {
+                const stepIndex = response.index;
+                // ограничим максимум 5 (всего конфликтов 6, индексы 0..5)
+                if (stepIndex <= 5) {
+                    showRows(stepIndex);
+                } else {
+                    showRows(5); // показываем все
+                }
+            }
+
+            // Настраиваем шаги: создадим невидимые триггеры для каждого конфликта
+            // Проще всего создать пустые div-ы с data-step
+            const stepsContainer = document.createElement('div');
+            stepsContainer.style.position = 'relative';
+            stepsContainer.style.marginTop = '30vh';
+            stepsContainer.style.marginBottom = '30vh';
+            stepsContainer.style.pointerEvents = 'none';
+            stepsContainer.style.visibility = 'hidden'; // невидимые, но занимают место
+            stepsContainer.style.height = '10px';
+            for (let i = 0; i <= 5; i++) {
+                const stepDiv = document.createElement('div');
+                stepDiv.className = 'step';
+                stepDiv.setAttribute('data-step', i);
+                stepDiv.style.height = '50vh'; // каждый шаг занимает полэкрана
+                stepDiv.style.marginBottom = '10px';
+                stepsContainer.appendChild(stepDiv);
+            }
+            document.body.appendChild(stepsContainer);
+
+            function initScrollama() {
+                scroller.setup({
+                    step: ".step",
+                    offset: 0.8,  // срабатывает когда верх шага проходит 80% окна
+                    debug: false
+                })
+                .onStepEnter(handleStepEnter);
+            }
+
+            window.addEventListener("load", () => {
+                initScrollama();
+                // Показываем первый шаг (Судан)
+                showRows(0);
+            });
+
+            // При ресайзе обновляем масштаб?
+            window.addEventListener("resize", () => {
+                // можно перерисовать, но для простоты просто перезагрузим? 
+                // Лучше не усложнять, оставим так.
+            });
+        })();
+    </script>
+</body>
+</html>
