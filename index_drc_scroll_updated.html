@@ -1,0 +1,2076 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DRC storymap</title>
+
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/scrollama"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg:#ffffff;
+      --card:#ffffff;
+      --cardText:#111827;
+      --shadow: rgba(0,0,0,.18);
+      --red:#dc2626;
+      --uiFont: "Montserrat", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+    html,body{height:100%; margin:0; background:var(--bg);}
+    #map{position:fixed; inset:0; width:100%; height:100%; z-index:0;}
+
+    .scrolly{position:relative; z-index:1; width:100%; min-height:100vh; pointer-events:none;}
+    .step{height:86vh; margin:0; padding:0; opacity:0;}
+
+    .card{
+      position:fixed;
+      left:18px;
+      bottom:10px;
+      width:min(560px, calc(100% - 36px));
+      background:var(--card);
+      color:var(--cardText);
+      border-radius:18px;
+      box-shadow:0 18px 60px var(--shadow);
+      z-index:60;
+      pointer-events:auto;
+      transform:translateY(10px);
+      opacity:0;
+      transition:opacity .18s ease, transform .18s ease;
+      overflow:hidden;
+    }
+    .card.is-visible{opacity:1; transform:translateY(0);}
+    .card.is-right{left:auto; right:18px;}
+
+    .card-inner{padding:14px 16px;}
+    .card-title{
+      font-family: var(--uiFont);
+      font-size:16px;
+      font-weight:700;
+      margin:0 0 8px 0;
+      line-height:1.15;
+    }
+    .card-text{
+      font-family: var(--uiFont);
+      font-size:18px;
+      line-height:1.32;
+      margin:0;
+      white-space:pre-wrap;
+    }
+    .card-actions{
+      display:none;
+      padding:0 16px 16px 16px;
+      gap:10px;
+      align-items:center;
+    }
+    .card-actions.is-visible{display:flex;}
+    .card-btn{
+      appearance:none;
+      border:none;
+      border-radius:999px;
+      background:var(--red);
+      color:#fff;
+      font-family:var(--uiFont);
+      font-size:14px;
+      font-weight:600;
+      line-height:1.2;
+      padding:10px 14px;
+      cursor:pointer;
+      box-shadow:0 10px 24px rgba(220,38,38,.22);
+    }
+    .card-btn:hover{filter:brightness(.96);}
+    .card a{
+      color: var(--cardText);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    #midHint,
+    #centerPlate{
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 70;
+      width: min(760px, calc(100% - 36px));
+      padding: 18px 20px;
+      border-radius: 18px;
+      background: rgba(255,255,255,.94);
+      color: #111827;
+      box-shadow: 0 18px 60px rgba(0,0,0,.18);
+      font-family: var(--uiFont);
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .18s ease, transform .18s ease;
+    }
+    #midHint{
+      font-size: 22px;
+      line-height: 1.2;
+    }
+    #centerPlate{
+      font-size: 36px;
+      line-height: 1.08;
+      font-weight: 700;
+      width:min(860px, calc(100% - 40px));
+      padding:22px 28px;
+    }
+    #midHint.is-visible,
+    #centerPlate.is-visible{
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    .media-modal{
+      position:fixed;
+      inset:0;
+      z-index:95;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+      background:rgba(0,0,0,.45);
+      backdrop-filter: blur(6px);
+      opacity:0;
+      pointer-events:none;
+      transition:opacity .18s ease;
+    }
+    .media-modal.is-visible{opacity:1; pointer-events:auto;}
+    .media-modal-card{
+      position:relative;
+      width:auto;
+      max-width:min(1200px, calc(100% - 24px));
+      max-height:calc(100vh - 24px);
+      overflow:visible;
+      background:transparent;
+      border-radius:0;
+      box-shadow:none;
+      padding:0;
+      font-family:var(--uiFont);
+      color:#111827;
+    }
+    .media-modal-title{
+      display:none;
+      font-size:20px;
+      font-weight:700;
+      margin:0;
+    }
+    .media-modal-close{
+      position:absolute;
+      top:12px;
+      right:12px;
+      appearance:none;
+      border:none;
+      background:rgba(17,24,39,.08);
+      color:#111827;
+      width:34px;
+      height:34px;
+      border-radius:999px;
+      cursor:pointer;
+      font-size:18px;
+      line-height:1;
+    }
+    .media-modal img{
+      display:block;
+      width:auto;
+      max-width:min(1200px, calc(100vw - 24px));
+      height:auto;
+      max-height:90vh;
+      object-fit:contain;
+      border-radius:16px;
+      background:#fff;
+      box-shadow:0 18px 60px rgba(0,0,0,.28);
+    }
+
+    .loader{
+      position:fixed; inset:0;
+      z-index:1000;
+      display:flex; align-items:center; justify-content:center;
+      background: rgba(0,0,0,.55);
+      backdrop-filter: blur(6px);
+      opacity:0;
+      pointer-events:none;
+      transition: opacity .18s ease;
+    }
+    .loader.is-visible{ opacity:1; pointer-events:auto; }
+    .loader-box{
+      width:min(520px, calc(100% - 36px));
+      background: rgba(255,255,255,.96);
+      border-radius:18px;
+      padding:16px 16px 14px;
+      box-shadow:0 18px 60px rgba(0,0,0,.25);
+      font-family: var(--uiFont);
+      color:#111827;
+    }
+    .loader-title{ font-weight:700; font-size:18px; margin:0 0 10px; }
+    .loader-sub{ font-size:14px; opacity:.75; margin-top:10px; }
+    .loader-bar{
+      height:10px;
+      border-radius:999px;
+      background: rgba(17,24,39,.10);
+      overflow:hidden;
+    }
+    .loader-bar-fill{
+      height:100%;
+      width:0%;
+      border-radius:999px;
+      background: rgba(220,38,38,1);
+      transition: width .2s ease;
+    }
+
+    @media (max-width:700px){
+      .card{ left:12px; right:auto; bottom:28px; width:calc(100% - 24px); }
+      .card.is-right{ left:12px; right:auto; }
+      .card-text{ font-size:16px; line-height:1.28; }
+      .step{ height:90vh; }
+      #midHint{ font-size:18px; }
+      #centerPlate{ font-size:26px; line-height:1.12; padding:18px 20px; }
+      .media-modal-card{ padding:0; }
+      .card-actions{padding:0 14px 14px 14px;}
+      .card-btn{font-size:13px;}
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+
+  <div id="loader" class="loader is-visible">
+    <div class="loader-box">
+      <div class="loader-title">Загружаем карту…</div>
+      <div class="loader-bar"><div class="loader-bar-fill" id="loaderFill"></div></div>
+      <div class="loader-sub" id="loaderSub">Подготовка</div>
+    </div>
+  </div>
+
+  <div class="scrolly">
+    <section class="step" data-step="intro"></section>
+    <section class="step" data-step="s1"></section>
+    <section class="step" data-step="s2"></section>
+    <section class="step" data-step="s3"></section>
+    <section class="step" data-step="s4"></section>
+    <section class="step" data-step="s5"></section>
+    <section class="step" data-step="s6"></section>
+    <section class="step" data-step="s7"></section>
+    <section class="step" data-step="interlude"></section>
+    <section class="step" data-step="goma"></section>
+    <section class="step" data-step="goma_kigali"></section>
+    <section class="step" data-step="hutu_exodus"></section>
+    <section class="step" data-step="great_lakes"></section>
+    <section class="step" data-step="chapter_first_war"></section>
+    <section class="step" data-step="fw_kivus"></section>
+    <section class="step" data-step="fw_angola"></section>
+    <section class="step" data-step="fw_diamonds"></section>
+    <section class="step" data-step="fw_bulgaria"></section>
+    <section class="step" data-step="fw_mobutu_diamonds"></section>
+    <section class="step" data-step="fw_antwerp"></section>
+    <section class="step" data-step="fw_kenge"></section>
+    <section class="step" data-step="fw_burundi_intro"></section>
+    <section class="step" data-step="fw_burundi_attacks"></section>
+    <section class="step" data-step="fw_southkivu_assault"></section>
+    <section class="step" data-step="fw_rebel_scatter"></section>
+    <section class="step" data-step="fw_uganda"></section>
+    <section class="step" data-step="fw_adf_nkivu"></section>
+    <section class="step" data-step="fw_kasese"></section>
+    <section class="step" data-step="fw_washington"></section>
+    <section class="step" data-step="fw_atrocities"></section>
+    <section class="step" data-step="fw_kinshasa"></section>
+    <section class="step" data-step="fw_un_icc"></section>
+        <section class="step" data-step="end"></section>
+  </div>
+
+  <div class="card" id="card">
+    <div class="card-inner">
+      <div class="card-title" id="cardTitle"></div>
+      <p class="card-text" id="cardText"></p>
+    </div>
+    <div class="card-actions" id="cardActions"></div>
+  </div>
+
+  <div id="midHint">Листайте дальше, чтобы узнать о войне в ДР&nbsp;Конго</div>
+  <div id="centerPlate"></div>
+
+  <div class="media-modal" id="mediaModal">
+    <div class="media-modal-card">
+      <button class="media-modal-close" id="mediaModalClose" type="button">×</button>
+      <div class="media-modal-title" id="mediaModalTitle"></div>
+      <img id="mediaModalImg" alt="" />
+    </div>
+  </div>
+
+<script>
+  const MAPTILER_KEY = "zcx0wCmXkSMXWzGNlJ7T";
+
+  function toLngLat(lat, lng){ return [lng, lat]; }
+
+  const COORD = {
+    drcCenter:   toLngLat(-3.1636175575250878, 22.748760056704107),
+    katanga:     toLngLat(-11.160437, 27.624043),
+    sicomines:   toLngLat(-10.137305659228504, 25.209766013975187),
+    china:       toLngLat(34.01527678420344, 94.64329129105941),
+    usa:         toLngLat(39.23220585452025, -102.97330951852257),
+    russia:      toLngLat(62.79173997858245, 92.99411905777185),
+    goma:        toLngLat(-1.679, 29.234),
+    gomaAirport: toLngLat(-1.6509522831413466, 29.253945963115182),
+    kigali:      toLngLat(-1.9330950019041024, 30.069833344633015),
+    gomaCity:    toLngLat(-1.6572252944482644, 29.220382288768047),
+    hutuFrom:    toLngLat(-1.9848313231849366, 29.994419119389025),
+    hutuTo:      toLngLat(-5.0568071672582064, 25.688583286035048),
+    luanda:      toLngLat(-8.811465172909408, 13.228314553263388),
+    kinshasa:    toLngLat(-4.286963408385157, 15.298368737008632),
+    antwerp:     toLngLat(51.224378108675154, 4.402803118581322),
+    kenge:       toLngLat(-4.80807483850211, 17.042584402636688),
+    bujumbura:   toLngLat(-3.3588302153796694, 29.360358578787842),
+    kasese:      toLngLat(0.1702202284016562, 30.078243205780378),
+    washington:  toLngLat(38.92281033209483, -77.07043721340263),
+    kampala:     toLngLat(0.31895988274492315, 32.57113787218397),
+    unHQ:        toLngLat(40.749187374080435, -73.96774432336822),
+    icc:         toLngLat(52.10569850717377, 4.31842073422264),
+    southKivuFocus: toLngLat(-3.190, 28.850),
+    northKivuFocus: toLngLat(-0.800, 29.000),
+    campSouthKivu:  toLngLat(-3.450, 29.050),
+    westTanzania:   toLngLat(-6.050, 30.550),
+    ugandaWestBorder: toLngLat(0.450, 29.400),
+    lundaHub:     toLngLat(-9.200, 20.500),
+    sofia:        toLngLat(42.6977, 23.3219),
+    southKivuBorderWest: toLngLat(-3.700, 28.400),
+    southKivuBorderEast: toLngLat(-3.500, 29.200),
+    bulgariaLabel: toLngLat(42.700, 25.200),
+    gitega:       toLngLat(-3.4271, 29.9246),
+    ngozi:        toLngLat(-2.9022, 29.8306),
+    kigoma:       toLngLat(-4.8762, 29.6267),
+
+    lakeVictoria: toLngLat(-1.000, 33.000),
+    lakeTanganyika: toLngLat(-6.200, 29.600),
+    lakeKivu: toLngLat(-2.000, 29.200),
+    lakeEdward: toLngLat(0.250, 29.700),
+    lakeAlbert: toLngLat(1.700, 30.900),
+
+    ruziziNorth: toLngLat(-2.490, 28.900),
+    ruziziMid: toLngLat(-2.800, 29.050),
+    ruziziSouth: toLngLat(-3.120, 29.180),
+    ruziziMouth: toLngLat(-3.3550651821029867, 29.270130093294),
+    ruziziLabel: toLngLat(-3.3550651821029867, 29.270130093294)
+  };
+
+  const map = new maplibregl.Map({
+    container: "map",
+    style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`,
+    center: [0, 20],
+    zoom: 1.55,
+    minZoom: 1.2,
+    maxZoom: 12,
+    pitch: 0,
+    bearing: 0
+  });
+  map.addControl(new maplibregl.NavigationControl({showCompass:false}), "top-right");
+
+  const loaderEl = document.getElementById("loader");
+  const loaderFillEl = document.getElementById("loaderFill");
+  const loaderSubEl = document.getElementById("loaderSub");
+
+  const LOAD = {
+    style:false,
+    countries:false,
+    adm1:false,
+    adm2:false,
+    rwa:false,
+    ago:false,
+    lakes:false,
+    uga:false
+  };
+
+  function updateLoader(){
+    const keys = Object.keys(LOAD);
+    const done = keys.filter(k => LOAD[k]).length;
+    const total = keys.length;
+    const pct = Math.round((done / total) * 100);
+
+    loaderFillEl.style.width = pct + "%";
+
+    if (!LOAD.style) {
+      loaderSubEl.textContent = "Загрузка стиля…";
+    } else if (done < total) {
+      loaderSubEl.textContent = `Загружено ${done} из ${total}`;
+    } else {
+      loaderSubEl.textContent = "Готово";
+    }
+
+    if (done === total){
+      setTimeout(() => {
+        loaderEl.classList.remove("is-visible");
+        loaderEl.style.display = "none";
+      }, 180);
+    } else {
+      loaderEl.classList.add("is-visible");
+      loaderEl.style.display = "flex";
+    }
+  }
+  updateLoader();
+
+  async function loadGeoJSON(url){
+    const r = await fetch(url, { cache: "force-cache" });
+    if(!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
+    const text = await r.text();
+    if (text.startsWith("version https://git-lfs.github.com/spec/v1")) {
+      throw new Error(`Git LFS pointer вместо GeoJSON: ${url}`);
+    }
+    return JSON.parse(text);
+  }
+
+  function setMapLanguage(lang) {
+    const style = map.getStyle();
+    if (!style || !style.layers) return;
+    for (const layer of style.layers) {
+      if (layer.type === "symbol" && layer.layout && layer.layout["text-field"]) {
+        map.setLayoutProperty(
+          layer.id,
+          "text-field",
+          ["coalesce", ["get", `name:${lang}`], ["get","name"], ["get","name:en"], ""]
+        );
+      }
+    }
+  }
+
+  const cardEl = document.getElementById("card");
+  const cardTitleEl = document.getElementById("cardTitle");
+  const cardTextEl = document.getElementById("cardText");
+  const cardActionsEl = document.getElementById("cardActions");
+  const midHintEl = document.getElementById("midHint");
+  const centerPlateEl = document.getElementById("centerPlate");
+  const mediaModalEl = document.getElementById("mediaModal");
+  const mediaModalTitleEl = document.getElementById("mediaModalTitle");
+  const mediaModalImgEl = document.getElementById("mediaModalImg");
+  const mediaModalCloseEl = document.getElementById("mediaModalClose");
+
+  function showMidHint(show){ midHintEl.classList.toggle("is-visible", !!show); }
+  function showCard(show){ cardEl.classList.toggle("is-visible", !!show); }
+  function setCardSide(stepId){ cardEl.classList.toggle("is-right", ["s6","fw_angola","fw_burundi_attacks","fw_un_icc"].includes(stepId)); }
+  function showCenterPlate(text){
+    centerPlateEl.textContent = text || "";
+    centerPlateEl.classList.toggle("is-visible", !!text);
+  }
+  function closeMediaModal(){
+    mediaModalEl.classList.remove("is-visible");
+    mediaModalTitleEl.textContent = "";
+    mediaModalTitleEl.style.display = "none";
+    mediaModalImgEl.removeAttribute("src");
+    mediaModalImgEl.alt = "";
+  }
+  function openMediaModal({title, src, alt}){
+    mediaModalTitleEl.textContent = title || "";
+    mediaModalTitleEl.style.display = title ? "block" : "none";
+    mediaModalImgEl.src = src;
+    mediaModalImgEl.alt = alt || title || "";
+    mediaModalEl.classList.add("is-visible");
+  }
+  mediaModalCloseEl.addEventListener("click", closeMediaModal);
+  mediaModalEl.addEventListener("click", (e) => {
+    if (e.target === mediaModalEl) closeMediaModal();
+  });
+
+  function setCardTitle(t){
+    cardTitleEl.textContent = t || "";
+    cardTitleEl.style.display = t ? "block" : "none";
+  }
+  function setCardParts(parts){
+    cardTextEl.innerHTML = "";
+    for (const part of (parts || [])) {
+      if (typeof part === "string") {
+        cardTextEl.appendChild(document.createTextNode(part));
+        continue;
+      }
+      if (part && typeof part === "object" && part.a && part.href) {
+        const link = document.createElement("a");
+        link.textContent = part.a;
+        link.href = part.href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        cardTextEl.appendChild(link);
+        continue;
+      }
+      cardTextEl.appendChild(document.createTextNode(String(part)));
+    }
+  }
+  function setCardActions(actions){
+    cardActionsEl.innerHTML = "";
+    const items = Array.isArray(actions) ? actions : [];
+    if (!items.length){
+      cardActionsEl.classList.remove("is-visible");
+      return;
+    }
+    for (const action of items) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "card-btn";
+      btn.textContent = action.label;
+      btn.addEventListener("click", action.onClick);
+      cardActionsEl.appendChild(btn);
+    }
+    cardActionsEl.classList.add("is-visible");
+  }
+
+  const CHAPTER_STEPS = {
+    chapter_first_war: "Первая Конголезская война (1996–1997)",
+  };
+
+  const CARD_ACTIONS = {
+    great_lakes: [{
+      label: "Нажмите, если хотите узнать, кто правил этими землями до получения ими независимости",
+      onClick: () => openMediaModal({
+        title: "",
+        src: "великие озера.svg",
+        alt: "Карта региона Великих озёр до получения независимости"
+      })
+    }]
+  };
+
+  const PAR = {
+    intro: { title:"", parts:[] },
+
+    s1: { title:"", parts:[ "Демократическая Республика Конго — вторая по величине страна Африки после Алжира. Она обеспечивает почти 75% мирового производства кобальта (по состоянию на 2024 год, ", { a: "по данным", href: "https://ourworldindata.org/grapher/cobalt-production?tab=line&country=AUS~CAN~CHN~CUB~COD~MDG~MAR~ZMB~OWID_WRL~ZAF&time=1995..2024" }, " Энергетического института). Европейский Союз считает этот металл критически важным сырьем. Это означает, что перебои в поставках кобальта напрямую затрагивают европейскую промышленность — от производителей аккумуляторов для телефонов до автоконцернов, развивающих электромобили. Однако до последнего времени ДР Конго получала только ", { a: "3%", href: "https://about.bnef.com/insights/clean-energy/producing-battery-materials-in-the-drc-could-lower-supply-chain-emissions-and-add-value-to-the-countrys-cobalt/" }, " прибыли от цепочки производства батарей, отдавая почти весь кобальт на переработку китайским компаниям." ]},
+
+    s2: { title:"", parts:[ "По оценке Совета по международным отношеним (CFR), девять из десяти крупнейших кобальтовых рудников мира ", { a: "расположены", href: "https://www.cfr.org/articles/china-africa-march-2025" }, " на юге ДР Конго в бывшей провинции Катанга (сейчас она разделена на 4 провинции), и примерно половина из них находится под контролем китайских компаний. В последние годы Киншаса (столица государства) добивалась пересмотра условий сотрудничества с китайскими партнерами — требуя увеличения инвестиций в инфраструктуру, введения роялти от выручки и большего контроля над сбытом продукции.\n\n", "Кобальт необходим для мощных аккумуляторов, но его добыча наносит вред экологии, а перевозка руды через океан в Китай лишь увеличивает углеродный след. Из-за высокой стоимости и наличия альтернатив производители ", { a: "начали", href: "https://energy-policy.ru/kobalt-stanovitsya-nevostrebovannym-metallom-dlya-akkumulyatorov/novosti/2024/11/06/" }, " снижать долю кобальта в батареях. Например, ", { a: "Tesla", href: "https://www.spglobal.com/energy/en/news-research/latest-news/energy-transition/042122-almost-half-of-tesla-evs-produced-in-q1-had-no-nickel-cobalt-in-battery" }, " еще в 2022 году заявила, что половина всех ее новых электромобилей оснащены безкобальтовыми батареями. Годом ранее крупнейший китайский производитель электромобилей BYD ", { a: "объявил", href: "https://chinaglobalsouth.com/2021/04/12/drc-take-note-chinas-byd-says-itll-no-longer-used-cobalt-in-its-electric-vehicles/" }, ", что полностью отказывается от использования кобальта в своих автомобилях. «ДР Конго, прими к сведению» — так озаглавил свой материал China Global South Project, некоммерческая организация, изучающая связи Китая с глобальным Югом." ]},
+
+    s3: { title:"", parts:[ "В марте 2024 года ДР Конго и Китай ", { a:"подписали", href:"https://www.miningweekly.com/article/congo-chinese-partners-sign-reviewed-sicomines-copper-and-cobalt-jv-agreement-2024-03-15" }, " соглашение о пересмотре условий работы совместного горнодобывающего предприятия Sicomines. Китайские инвесторы владеют 68% его акций, конголезские — 32%." ]},
+
+    s4: { title:"", parts:[ "Соглашение обязывает Китай инвестировать 7 млрд долларов в инфраструктуру ДР Конго (", { a: "преимущественно", href: "https://thesudantimes.com/economy/drcs-7b-infrastructure-plan-with-china-tied-to-copper-prices/" }, " в строительство дорог), ежегодно выплачивать государству 1,2% роялти от выручки и передать конголезской компании Gecamines право на самостоятельную продажу 32% добываемого сырья.\n\n", "С октября 2025 года ДР Конго также ввела жесткие квоты на экспорт кобальта — не больше 96 600 тонн в год, примерно вдвое меньше уровня 2024-го. Как ", { a: "отмечает", href: "https://www.miningreview.com/industrial-minerals/critical-minerals-outlook-whats-in-store-for-2026/" }, " индустриальный журнал Mining Review Africa, это создаст дефицит на мировом рынке в 2026–2027 годах и подтолкнет цены вверх. При цене 20 долларов за фунт экспортная выручка Конго в 2027 году может быть на четверть выше, чем в 2024-м.\n\n", "Но у этой стратегии есть обратная сторона. Из-за роста цен на кобальт производить электромобили станет дороже. Это ускоряет переход производителей на батареи без кобальта. Пока Конго пытается контролировать рынок, его доля в мировом производстве кобальта может снизиться с 75% в 2024 году до 50% в 2026-м. Квоты будут пересматривать — и от этих решений зависит, сохранит ли Конго свою монополию на экспорт кобальта." ]},
+
+    s5: { title:"", parts:[ "По объему разведанных запасов меди ДР Конго сопоставима с Россией — речь идет примерно о 80 млн тонн (", { a: "по данным", href: "https://ourworldindata.org/explorers/minerals?tab=map&country=OWID_WRL~AUS~CHL~CHN&globe=1&globeRotation=-2.84%2C23.58&globeZoom=2.5&Mineral=Copper&Metric=Reserves&Type=Mine&Share+of+global=false" }, " Геологической службы США от 2024 года).\n\n", "Если кобальт нужен для хранения энергии, то медь — для ее передачи. Она важна для производства электромобилей (которым, ", { a: "по информации", href: "https://www.copper.org/copperconversations/thought-leadership/electrification-and-energy-efficiency-coppers-role.php" }, " Ассоциации развития меди, требуется в 3-4 раза больше меди, чем обычным авто), изготовления кабелей, проводов и электрооборудования." ]},
+
+    s6: { title:"", parts:[ "Управление международной торговли США ", { a: "видит", href: "https://www.trade.gov/country-commercial-guides/democratic-republic-congo-mining-and-minerals" }, " в ДР Конго ключевого партнера по добыче критических минералов — кобальта, лития, меди и редкоземельных металлов (о них вы могли часто слышать в заявлениях Дональда Трампа). Правда, эта страна не входит даже в первую десятку стран ни по ", { a: "производству", href: "https://ourworldindata.org/explorers/minerals?tab=discrete-bar&time=latest&facet=none&country=CHN~USA~MMR~AUS~THA~IND~RUS~MDG~VNM~MYS&hideControls=true&Mineral=Rare+earths&Metric=Production&Type=Mine&Share+of+global=true" }, ", ни по ", { a: "подтвержденным запасам", href: "https://ourworldindata.org/explorers/minerals?tab=discrete-bar&time=latest&facet=none&country=CHN~VNM~BRA~RUS~IND~AUS~USA~GRL~TZA~CAN&hideControls=true&Mineral=Rare+earths&Metric=Reserves&Type=Mine&Share+of+global=true" }, " редкоземельных металлов.\n\n", "В марте 2025 года марокканское издание The North Africa Post выпустило статью с таким заголовком: «ДР Конго рассчитывает на сделку с США по украинскому образцу — минералы в обмен на безопасность — чтобы противостоять повстанцам и влиянию Китая». Через девять месяцев США и ДР Конго ", { a: "подписали", href: "https://www.state.gov/strategic-partnership-agreement-between-the-government-of-the-united-states-of-america-and-the-government-of-the-democratic-republic-of-the-congo" }, " соглашение о стратегическом партнерстве. Документ закрепляет сотрудничество в сфере безопасности, развития и доступа к конголезским критическим минералам. США обещают инвестиции и содействие реформам в обмен на «безопасные, надежные и взаимовыгодные» поставки сырья для американской промышленности и оборонного сектора." ]},
+
+    s7: { title:"", parts:[ "Здесь есть всё: кобальт для батарей, литий для электромобилей, медь для проводов. И уже тридцать лет здесь идет война, которая миллионам ", { a:"стоила", href:"https://www.cfr.org/global-conflict-tracker/conflict/violence-democratic-republic-congo" }, " жизни. Добыча минералов ", { a:"продолжается", href:"https://www.reuters.com/world/africa/us-struggling-de-risk-congos-war-zone-minerals-even-after-pact-sources-say-2026-03-02/" }, ". Война для торговли — не проблема." ]},
+
+    interlude: { title:"", parts:[] },
+
+    goma: { title:"", parts:[ "Мы находимся в городе Гома, региональном хабе востока ДР Конго. По подсчетам, в 2024 году здесь жили почти 800 000 человек — больше, чем в Ульяновске или Владивостоке. В начале 2025 года этот город стал эпицентром эскалации конфликта. При поддержке ", { a: "3–4 тысяч", href: "https://www.cfr.org/global-conflict-tracker/conflict/violence-democratic-republic-congo" }, " наземных войск из Руанды, повстанцы из группировки M23 захватили Гому. Тысячи местных жителей, многие из которых уже были внутренне перемещенными лицами, вновь бежали из города. Многие из них — в Руанду. Кто-то, наоборот, ", { a: "приветствовал", href: "https://apnews.com/article/congo-goma-m23-rebels-northkivu-da924b78ece7e583962f3976544ab7a3" }, " повстанцев и пожимал им руки. По оценкам, в ходе наступления на Гому ", { a: "погибло", href: "https://www.reuters.com/world/africa/east-congo-city-goma-rushes-bury-bodies-after-rebel-offensive-2025-02-04/" }, " от 900 до 2000 человек. Из-за перебоев с электричеством, холодильные камеры в моргах ", { a: "вышли", href: "http://reuters.com/world/africa/east-congo-city-goma-rushes-bury-bodies-after-rebel-offensive-2025-02-04" }, " из строя. Из-за этого опознание погибших проходило в спешке.\n\n", "Аэропорт Гома, который находится к северу от одноименного города, был захвачен повстанцами M23 в ходе наступления. Весь 2025 год он не работал, что мешало доставке гуманитарной помощи и эвакуации раненых. Ситуация сдвинулась с мертвой точки лишь в феврале 2026 года, когда на его полосу впервые ", { a: "приземлился", href: "https://www.timeslive.co.za/news/africa/2026-02-13-un-to-begin-reconnaissance-flights-backing-eastern-drc-ceasefire/" }, " вертолет ООН. Европейский комиссар Хаджа Лахбиб ", { a: "подчеркнула", href: "https://acp.cd/anglais/discussions-initiated-for-the-reopening-of-goma-airport/" }, " важность беспрепятственного доступа гуманитарной помощи, отметив, что стороны конфликта согласились соблюдать международное гуманитарное право. На фоне этих усилий ЕС выделил 81,2 миллиона евро на помощь региону в этом году." ]},
+
+    goma_kigali: { title:"", parts:[ "Всего в 160 километрах от Гомы находится Кигали, столица Руанды. Президент Поль Кагаме — ключевая фигура режима, который установился в Руанде после геноцида 1994 года; формально он возглавляет страну с 2000 года. По данным ", { a:"ООН", href:"https://www.reuters.com/world/africa/un-security-council-call-rwanda-pull-troops-congo-2025-02-21/" }, ", Руанда оказывает M23 военную поддержку, а на востоке ДР Конго действуют подразделения Rwanda Defence Force, хотя Кигали это отрицает. Руанда объясняет свое вмешательство борьбой с Демократическими силами освобождения Руанды (фр. Forces démocratiques de libération du Rwanda, FDLR) — вооруженной группировке хуту, укрывающейся в Конго. В то же время власти ДРК связывают действия Руанды с контролем над торговыми потоками и минералами восточного Конго." ]},
+
+    hutu_exodus: { title:"", parts:[ "Всё началось не в Конго, а в Руанде. После геноцида ", { a:"тутси", href:"https://lenta.ru/articles/2015/11/01/ruanda/" }, ", в котором погибло около миллиона человек, почти 2 миллиона ", { a:"этнических хуту", href:"https://www.csmonitor.com/World/Africa/Africa-Monitor/2011/1129/A-brief-history-of-Congo-s-wars" }, " бежали через границу в Заир (нынешняя ДР Конго). Среди них были не только мирные жители, но и вооруженные экстремисты ", { a:"(CFR)", href:"https://www.cfr.org/global-conflict-tracker/conflict/violence-democratic-republic-congo" }, ", организовавшие ополчения на конголезской земле. Этот исход стал детонатором будущей войны." ]},
+
+    great_lakes: { title:"", parts:[ "Регион Великих озер — исторический центр конфликта. По следам геноцида в Руанде здесь развернулись Первая (1996–1997) и Вторая (1998–2003) Конголезские войны, которые ", { a:"унесли", href:"https://www.cfr.org/global-conflict-tracker/conflict/violence-democratic-republic-congo" }, " жизни более 5 миллионов человек и ", { a:"втянули", href:"https://www.britannica.com/place/Democratic-Republic-of-the-Congo/The-Democratic-Republic-of-the-Congo" }, " армии Руанды, Уганды, Анголы и Зимбабве. Нынешний конфликт M23 — лишь последняя глава этой истории." ]},
+
+    chapter_first_war: { title:"", parts:[] },
+
+    fw_kivus: { title:"", parts:[ "Когда после геноцида 1994 года в Руанде к власти пришло новое правительство, ключевую роль в нём играл Поль Кагаме — лидер РПФ*, вице-президент и министр обороны. По ту сторону границы, в Заире, ", { a:"оставались", href:"https://www.refworld.org/reference/countryrep/icg/1998/en/95628" }, " бывшие руандийские военные и вооруженные отряды хуту, в том числе силы, причастные к геноциду, и Кигали считал их прямой угрозой. Режим Мобуту фактически позволил им закрепиться на территории Заира.\n\n", "В 1995–1996 годах тутси в Северном Киву подвергались ", { a:"нападениям и этническим чисткам", href:"https://www.refworld.org/reference/countryrep/icg/1998/en/95628" }, ", которые власти в Киншасе не смогли или не захотели остановить. Когда анти-тутсийские настроения перекинулись и на Южное Киву, местные тутси взялись ", { a:"за оружие", href:"https://www.refworld.org/reference/countryrep/icg/1998/en/95628" }, " и в сентябре 1996 года подняли восстание при поддержке Руанды. Вскоре Кигали вмешался уже напрямую и помог создать коалицию AFDL, которая стала ядром наступления против режима Мобуту. Cо временем её главным лицом и политическим лидером стал ", { a:"заирский повстанец Лоран Кабила", href:"https://www.refworld.org/reference/countryrep/icg/1998/en/95628" }, ", который оттеснил других участников коалиции. На его стороне также выступили Ангола, Уганда и Бурунди.\n\n", "*Руандийский патриотический фронт (РПФ) — военно-политическое движение, которое создали руандийские тутси, бежавшие из страны из-за этнических чисток. РПФ пришел к власти в Руанде после геноцида." ]},
+
+    fw_angola: { title:"", parts:[ "Ангола поддержала наступление против Мобуту прежде всего из соображений безопасности. Режим Мобуту был связан с ангольскими повстанцами из Национального союза за полную независимость Анголы (União Nacional para a Independência Total de Angola, UNITA). Ангола хотела лишить их тыловой территории и поддержки Заира. Пока Мобуту оставался у власти, у врагов Анголы сохранялся ", { a:"внешний коридор", href:"https://www.refworld.org/reference/annualreport/hrw/1998/en/21848" }, " для снабжения, укрытия, а также торговли алмазами. Смена режима в Киншасе значила для Луанды шанс отрезать повстанцев от внешней опоры." ]},
+
+    fw_diamonds: { title:"", parts:[ "На северо-востоке Анголы, в провинциях Лунда-Норте и Лунда-Суль, ", { a:"расположены", href:"https://www.worlddiamondcouncil.org/diamond-empowerment-the-angola-case-study/" }, " одни из главных алмазных районов страны. Здесь находятся ", { a:"особые аллювиальные месторождения", href:"https://www.hrw.org/reports/1999/angola/Angl998-09.htm" }, " — россыпи алмазов в руслах рек и поймах. Именно контроль над этими территориями сделал ", { a:"алмазы", href:"https://www.hrw.org/reports/1999/angola/Angl998-09.htm" }, " одним из главных ресурсов ангольской гражданской войны.\n\n", "UNITA зарабатывала на контроле ", { a:"над алмазоносными территориями", href:"https://www.hrw.org/reports/1999/angola/Angl998-09.htm" }, ", добычей и неофициальными каналами продажи камней. После 1992 года, когда война в Анголе вспыхнула с новой силой, алмазы окончательно превратились в финансовую основу военной машины повстанцев. По оценкам, в 1992–1998 годах UNITA получила ", { a:"от алмазной торговли около 3–4 миллиардов долларов", href:"https://www.hrw.org/reports/1999/angola/Angl998-09.htm" }, "." ]},
+
+    fw_bulgaria: { title:"", parts:[ "Доходы от ангольских алмазов шли на закупку оружия для UNITA. Повстанцы получали оружие из Восточной Европы, включая миномёты и гранатомёты, через непрозрачные каналы поставок. Один из задокументированных случаев: осенью 1996 года через территорию Заира в адрес UNITA прошло ", { a:"более 450 тонн болгарского оружия", href:"https://www.hrw.org/reports/1999/angola/Angl998-09.htm" }, "." ]},
+
+    fw_mobutu_diamonds: { title:"", parts:[ "Глава Мобуту Сесе Секо, потеряв после холодной войны западную поддержку США, нашел новый источник выживания: он ", { a:"предоставил", href:"https://www.hrw.org/legacy/worldreport/Africa-01.htm" }, " свою территорию ангольским повстанцам в обмен на долю с алмазной торговли.\n\n", "Сами по себе алмазы не стреляют. Чтобы превратить камни в оружие, нужен маршрут. И для UNITA таким маршрутом долгие годы был Заир. Здесь уже существовала алмазная индустрия, поэтому можно было маскировать ", { a:"происхождение камней", href:"https://cdn2.globalwitness.org/archive/files/pdfs/a_rough_trade.pdf" }, ", пришедших из ангольских провинций." ]},
+
+    fw_antwerp: { title:"", parts:[ "Дальше алмазы уходили на большой рынок. Главным направлением был ", { a:"Антверпен", href:"https://cdn2.globalwitness.org/archive/files/pdfs/a_rough_trade.pdf" }, " — в 1990-е он был одним из главных мировых центров торговли алмазами. Там следы ангольских алмазов терялись в легальных потоках, а доходы от этой торговли поддерживали военную логистику UNITA.\n\n", "По данным панели экспертов Совбеза ООН, он передавал ", { a:"заирские сертификаты конечного пользователя", href:"https://reliefweb.int/report/angola/angola-report-panel-experts-violations-security-council-sanctions-against-unita" }, " главе ангольских повстанцев Жонашу Савимби — документы, которые позволяли оформлять оружейные поставки как легальные. В обмен повстанцы расплачивались с Мобуту алмазами и наличными." ]},
+
+    fw_kenge: { title:"", parts:[ "Весной 1997 года, когда повстанцы Лорана Кабилы при поддержке Анголы стремительно шли на запад, армия Мобуту уже распадалась. Последним важным рубежом на подступах к Киншасе стал Кенге, примерно в 200–250 километрах от столицы. В начале мая 1997 года в районе Кенге шли ", { a:"ожесточённые бои", href:"https://www.hrw.org/report/1997/10/01/what-kabila-hiding/civilian-killings-and-impunity-congo" }, ": силы, лояльные Мобуту, пытались задержать наступление коалиции Кабилы, но не смогли переломить ход войны. По сообщениям, на стороне режима действовали ", { a:"и бойцы UNITA", href:"https://reliefweb.int/report/democratic-republic-congo/zaire-watch-news-briefs-8-may-1997" }, ". После падения Кенге дорога на Киншасу фактически открылась. Мобуту бежал. В 1997 году Кабила стал президентом и вернул стране имя — Демократическая Республика Конго.\n\n", "Савимби потерял ", { a:"заирский тыл, важные маршруты снабжения и внешнюю опору", href:"https://reliefweb.int/report/angola/angola-peace-monitor-issue-no9-voliii-30-may-1997" }, ", которая долго помогала ему удерживать войну в Анголе. Когда в феврале 2002 года Савимби был убит, уже через несколько недель повстанцы и правительство Анголы подписали ", { a:"мирное соглашение", href:"https://reliefweb.int/report/angola/rebuilding-angola-national-reconciliation-and-peace" }, ", завершив гражданскую войну, которая длилась почти 30 лет." ]},
+
+    fw_burundi_intro: { title:"", parts:[ "После геноцида в Руанде 1994 года на восток Заира хлынул ", { a:"поток беженцев", href:"https://www.refworld.org/reference/countryrep/icg/1998/en/95628" }, ". Однако среди мирных жителей скрывались боевики. В этой же приграничной зоне действовали ", { a:"и бурундийские повстанцы", href:"https://www.refworld.org/reference/countryrep/icg/1998/en/95628" }, ", прежде всего в Южном Киву. В лагерях смешанного ", { a:"типа", href:"https://www.files.ethz.ch/isn/28680/012_burundian_refugees_in_tanzania.pdf" }, " (где руандийцы жили рядом с бурундийцами) бурундийские боевики объединились с руандийскими геноцидарами (теми, кто совершал акты геноцида). Вместе они планировали атаки, вместе добывали оружие и вместе тренировались. Вместе они даже планировали кампанию по созданию «зоны хуту» на севере Бурунди. Для Бурунди это означало, что угроза стояла прямо у границы.\n\n", "Кроме того, для Бурунди участие в этой борьбе решало ", { a:"ещё одну задачу", href:"https://www.refworld.org/reference/countryrep/icg/1998/en/95628" }, ": сохранить контроль над маршрутом через Южное Киву, который помогал обходить региональное эмбарго (оно было введено соседними странами после переворота в 1996 году). Одновременно Бужумбура пыталась не допустить, чтобы Руанда и Уганда слишком сильно усилили своё влияние в приграничном регионе." ]},
+
+    fw_burundi_attacks: { title:"", parts:[ "К 1996 году ситуация для Бурунди резко ухудшилась. Повстанцы, часть из которых базировались в заирских лагерях, подорвали ", { a:"стабильность в 13 из 15 провинций страны", href:"https://www.files.ethz.ch/isn/28680/012_burundian_refugees_in_tanzania.pdf" }, ". Правительство в Бужумбуре во главе с Пьером Буйойей, представителем тутси, рассматривало лагеря и повстанческие базы на востоке Заира как прямую угрозу безопасности страны. Пока эти тыловые зоны сохранялись у границы, конфликт в Бурунди было трудно взять под контроль. Нужен был решительный ответ." ]},
+
+    fw_southkivu_assault: { title:"", parts:[ "Осенью 1996 года в Южном Киву подняли ", { a:"восстание", href:"https://www.africa.upenn.edu/Hornet/irin_121897.html" }, " конголезские тутси — баньямуленге. К 1996 году они жили под растущей угрозой ", { a:"нападений", href:"https://www.africa.upenn.edu/Hornet/irin_121897.html" }, ": против них шли нападения, а их право считаться гражданами Заира постоянно оспаривалось. Вскоре его поддержали соседние страны, прежде всего Руанда. В конце сентября объединённые силы Руанды, Уганды и Бурунди вместе с повстанцами AFDL атаковали в Южном Киву лагеря беженцев и хуту-повстанцев. Как отмечает ICG, первыми жертвами стали ", { a:"бурундийские беженцы и повстанцы", href:"https://www.files.ethz.ch/isn/28680/012_burundian_refugees_in_tanzania.pdf" }, ". Удар объяснялся тем, что эти лагеря рассматривались как тыловая и военная инфраструктура врага." ]},
+
+    fw_rebel_scatter: { title:"", parts:[ "Операция увенчалась успехом, но временным ", { a:"успехом", href:"https://www.files.ethz.ch/isn/28680/012_burundian_refugees_in_tanzania.pdf" }, ". Лагеря были разгромлены, а инфраструктура повстанцев — серьезно подорвана. Однако разгром врага породил новую волну проблем. Многие беженцы были вынуждены вернуться в Бурунди, где их убивала бурундийская армия, а повстанцам потребовалось время, чтобы заново закрепиться в соседних странах, прежде всего в Танзании." ]},
+
+    fw_uganda: { title:"", parts:[ "К середине 1990-х годов президент Уганды Йовери Мусевени сделал ставку на поддержку Руандийского патриотического фронта (РПФ). Еще во время гражданской войны в Руанде он помогал повстанцам-тутси, а после их победы остался одним из главных союзников нового режима в Кигали.\n\n", "Уганда вошла в военный альянс с Руандой и Бурунди. Их объединенные силы атаковали лагеря беженцев в Заире, где базировались враждебные повстанцы. Уганда участвовала в операции не только из союзнической солидарности с Руандой, но и из собственных соображений безопасности: антиугандийские ", { a:"силы", href:"https://www.prif.org/fileadmin/Daten/Publikationen/Prif_Working_Papers/Anh%C3%A4nge/Uganda__ADF__1996-2002.pdf" }, " действовали с территории Заира и пользовались поддержкой режима Мобуту." ]},
+
+    fw_adf_nkivu: { title:"", parts:[ "В середине ноября 1996 года Уганда подверглась атаке с территории Заира. Нападавшие ", { a:"называли", href:"https://main.un.org/securitycouncil/en/sanctions/1533/materials/summaries/entity/allied-democratic-forces-%28adf%29" }, " себя «Союзными демократическими силами» (Allied Democratic Forces, ADF). В него ", { a:"вошли", href:"https://reliefweb.int/report/democratic-republic-congo/understanding-eastern-congos-adf-nalu-rebels" }, " исламские фундаменталисты, а также члены Национальной армии освобождения Уганды (National Army for the Liberation of Uganda, NALU), которые базировались в Заире. ADF сотрудничали с другими вооруженными группами включая экстремистов хуту." ]},
+
+    fw_kasese: { title:"", parts:[ "ADF начала атаки в районе Касесе. Уганда не ожидала ", { a:"нападения с запада", href:"https://www.refworld.org/reference/countryrep/writenet/1997/en/95462" }, ", поэтому повстанцы поначалу имели успех. Угандийская армия быстро ответила, перейдя в контрнаступление. Солдаты перешли на территорию Заира, преследуя боевиков. Это было сделано в рамках политики «горячего преследования» (", { a:"hot pursuit", href:"https://www.refworld.org/reference/countryrep/writenet/1997/en/95462" }, ").\n\n", "Это преследование создало дипломатические проблемы. Уганда фактически вела боевые действия на территории соседней страны. Это давало повод для обвинений в интервенции со стороны режима Мобуту." ]},
+
+    fw_washington: { title:"", parts:[ "На фоне сообщений о тысячах иностранных солдат в Заире и опасений Франции (которая видела в этом ", { a:"англосаксонский заговор", href:"https://www.hrw.org/reports/1997/zaire/Zaire-08.htm" }, ") США были вынуждены вмешаться. Вашингтон официально предупредил ", { a:"Уганду, Руанду и Бурунди", href:"https://sahistory.org.za/sites/default/files/archive-files/filip_reyntjens_the_great_african_war._congo_andbook4you.org_.pdf" }, " о недопустимости вмешательства в войну в Заире." ]},
+
+    fw_atrocities: { title:"", parts:[ "Кабила и его союзники из Руанды обстреливали ", { a:"лагеря беженцев", href:"https://www.hrw.org/reports/pdfs/z/zaire/zaire973.pdf" }, ", даже когда там не оставалось боевиков. Под огонь попадали беззащитные мирные жители. Тех, кто пытался уйти вглубь страны, бойцы коалиции запугивали, преследовали и нередко атаковали. Следственная группа ООН позже пришла ", { a:"к выводу", href:"https://www.securitycouncilreport.org/atf/cf/%7B65BFCF9B-6D27-4E9C-8CD3-CF6E4FF96FF9%7D/Civilians%20S1998581.pdf" }, ", что массовые убийства, совершённые ADFL и её союзниками, могут квалифицироваться как преступления против человечности.\n\n", "Но и правительственные войска Мобуту не уступали в жестокости. Еще до начала войны, в сентябре 1996-го, они вместе с ополченцами устроили ", { a:"этническую чистку тутси", href:"https://www.refworld.org/reference/countryrep/hrw/1997/en/23899" }, ". Связанных мужчин грузили ", { a:"в грузовики и топили в реке Рузизи", href:"https://www.hrw.org/reports/1997/zaire2/zaire0397web.pdf" }, ". Обе стороны вербовали ", { a:"детей", href:"https://www.hrw.org/reports/pdfs/c/congo/congo992.pdf" }, ". Обе стороны использовали и расхищали гуманитарные ресурсы: повстанцы захватывали топливо, грузовики и продовольствие, а силы Мобуту использовали даже зафрахтованные ООН самолёты для перевозки оружия." ]},
+
+    fw_kinshasa: { title:"", parts:[ "Первая Конголезская война закончилась победой коалиции Кабилы и его внешних союзников — прежде всего Руанды, Уганды и Анголы. В мае 1997 года повстанцы вошли ", { a:"в Киншасу", href:"https://www.britannica.com/topic/history-of-Democratic-Republic-of-the-Congo" }, ", Мобуту бежал, а Кабила объявил себя президентом. Заир перестал существовать под этим названием: стране вернули имя Демократическая Республика Конго.\n", "Для Руанды и Уганды это еще и означало, что они временно ослабили тыловые базы повстанцев, действовавших из восточного Заира. Но эта победа оказалась недолгой: очень быстро Кабила начал дистанцироваться ", { a:"от своих покровителей", href:"https://www.crisisgroup.org/rpt/africa/democratic-republic-congo/007-congo-war" }, ", и уже в 1998 году это привело ко Второй Конголезской войне. Победа коалиции не принесла мира." ]},
+
+    fw_un_icc: { title:"", parts:[ "Несмотря на масштаб насилия в годы Первой конголезской войны, отдельный международный трибунал по этим событиям так и не был создан. ООН проводила расследования, а в 2010 году выпустила ", { a:"отчёт", href:"https://www.ohchr.org/en/countries/africa/2010-drc-mapping-report" }, " по преступлениям в ДР Конго за 1993–2003 годы, однако эти механизмы не привели к полноценному международному уголовному суду по событиям 1996–1997 годов. Международный уголовный суд также не смог заняться этими преступлениями, поскольку его юрисдикция в ДР Конго начинается ", { a:"только с 1 июля 2002 года", href:"https://www.hrw.org/news/2010/10/01/dr-congo-q-united-nations-human-rights-mapping-report" }, "." ]},
+
+    end: { title:"", parts:[] }
+  };
+
+  const NE_COUNTRIES = "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_10m_admin_0_countries.geojson";
+  const NE_LAKES = "data/ne_10m_lakes.geojson";
+  const GB_RWA_ADM3 = "data/geoBoundaries-RWA-ADM3.geojson";
+  const GB_UGA_ADM2 = "data/geoBoundaries-UGA-ADM2.geojson";
+  const GB_COD_ADM1 = "https://media.githubusercontent.com/media/wmgeolab/geoBoundaries/9469f09592ced973a3448cf66b6100b741b64c0d/releaseData/gbOpen/COD/ADM1/geoBoundaries-COD-ADM1_simplified.geojson";
+  const GB_COD_ADM2 = "https://media.githubusercontent.com/media/wmgeolab/geoBoundaries/9469f09592ced973a3448cf66b6100b741b64c0d/releaseData/gbOpen/COD/ADM2/geoBoundaries-COD-ADM2_simplified.geojson";
+  const GB_AGO_ADM1 = "https://media.githubusercontent.com/media/wmgeolab/geoBoundaries/9469f09592ced973a3448cf66b6100b741b64c0d/releaseData/gbOpen/AGO/ADM1/geoBoundaries-AGO-ADM1_simplified.geojson";
+
+  const L = {
+    countriesFill:    "hi-countries-fill",
+    countriesOutline: "hi-countries-outline",
+    bordersLine:      "hi-borders-line",
+    adm1Fill:         "hi-adm1-fill",
+    adm1Line:         "hi-adm1-line",
+    gomaFill:         "hi-goma-fill",
+    gomaLine:         "hi-goma-line",
+    agoAdm1Fill:      "hi-ago-adm1-fill",
+    agoAdm1Line:      "hi-ago-adm1-line",
+    agoAdm1Diamond:   "hi-ago-adm1-diamond",
+    ugaAdm2Fill:      "hi-uga-adm2-fill",
+    ugaAdm2Line:      "hi-uga-adm2-line"
+  };
+
+  const ADMIN = {
+    DRC: "democratic republic of the congo",
+    CHN: "china",
+    RUS: "russia",
+    USA: "united states of america",
+    RWA: "rwanda",
+    AGO: "angola",
+    BGR: "bulgaria",
+    BEL: "belgium",
+    BDI: "burundi",
+    UGA: "uganda",
+    TZA: "tanzania",
+    ZWE: "zimbabwe",
+    NLD: "netherlands"
+  };
+
+  function adminFieldExpr(){
+    return ["coalesce",
+      ["get","ADMIN"],
+      ["get","admin"],
+      ["get","NAME_EN"],
+      ["get","NAME"],
+      ["get","name"],
+      ["get","name_en"],
+      ""
+    ];
+  }
+
+  function setFilterCountriesByAdmin(layerId, adminLowerList){
+    const list = (adminLowerList && adminLowerList.length) ? adminLowerList : ["___none___"];
+    map.setFilter(layerId, ["match", ["downcase", adminFieldExpr()], list, true, false]);
+  }
+
+  function setFilterBordersADMIN(layerId, namesLower){
+    const list = (namesLower && namesLower.length) ? namesLower : ["___none___"];
+    map.setFilter(layerId, ["match", ["downcase", adminFieldExpr()], list, true, false]);
+  }
+
+  function placeNameExpr(){
+    return ["downcase", ["coalesce",
+      ["get","shapeName"],
+      ["get","shapeName_en"],
+      ["get","name"],
+      ["get","name_en"],
+      ["get","NAME_1"],
+      ["get","NAME_2"],
+      ["get","ADM1_EN"],
+      ["get","ADM2_EN"],
+      ["get","district"],
+      ["get","DISTRICT"],
+      ["get","admin2Name"],
+      ["get","admin1Name"],
+      ""
+    ]];
+  }
+
+  function setFilterByShapeName(layerId, namesLower){
+    const list = (namesLower && namesLower.length) ? namesLower : ["___none___"];
+    map.setFilter(layerId, ["match", placeNameExpr(), list, true, false]);
+  }
+
+  const ADMIN_BBOX = {};
+  const propsAdmin = (p) => (p?.ADMIN ?? p?.admin ?? p?.NAME_EN ?? p?.NAME ?? p?.name ?? p?.name_en ?? "");
+
+  function extendBBox(b, x, y){
+    if (!b) return [x, y, x, y];
+    return [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)];
+  }
+
+  function bboxOfGeometry(geom){
+    let b = null;
+    const walk = (coords) => {
+      if (!coords) return;
+      if (typeof coords[0] === "number" && typeof coords[1] === "number") b = extendBBox(b, coords[0], coords[1]);
+      else for (const c of coords) walk(c);
+    };
+    walk(geom.coordinates);
+    return b;
+  }
+
+  function bboxUnion(b1, b2){
+    if (!b1) return b2;
+    if (!b2) return b1;
+    return [Math.min(b1[0], b2[0]), Math.min(b1[1], b2[1]), Math.max(b1[2], b2[2]), Math.max(b1[3], b2[3])];
+  }
+
+  function bboxToBounds(b){ return [[b[0], b[1]], [b[2], b[3]]]; }
+
+  function centerOfGeometryBBox(geom){
+    const b = bboxOfGeometry(geom);
+    if (!b) return null;
+    return [(b[0]+b[2])/2, (b[1]+b[3])/2];
+  }
+
+  function fitToCoords(coords, padding){
+    let b = null;
+    for (const c of (coords || [])) {
+      if (!Array.isArray(c) || c.length < 2) continue;
+      b = extendBBox(b, c[0], c[1]);
+    }
+    if (!b) return false;
+    map.fitBounds(bboxToBounds(b), {
+      padding: padding || { top: 60, bottom: 230, left: 60, right: 60 },
+      duration: 900
+    });
+    return true;
+  }
+
+  function addDiamondPattern(){
+    if (map.hasImage("diamond-pattern")) return;
+    const size = 32;
+    const c = document.createElement("canvas");
+    c.width = size;
+    c.height = size;
+    const ctx = c.getContext("2d");
+    if (!ctx) throw new Error("Canvas 2D context недоступен");
+
+    ctx.clearRect(0,0,size,size);
+    ctx.strokeStyle = "rgba(255,255,255,0.92)";
+    ctx.lineWidth = 1.4;
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+
+    const diamonds = [
+      [8,8,5], [24,8,5], [16,16,6], [8,24,5], [24,24,5]
+    ];
+
+    for (const [x,y,r] of diamonds) {
+      ctx.beginPath();
+      ctx.moveTo(x, y-r);
+      ctx.lineTo(x+r, y);
+      ctx.lineTo(x, y+r);
+      ctx.lineTo(x-r, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    const imageData = ctx.getImageData(0, 0, size, size);
+    map.addImage("diamond-pattern", imageData, { pixelRatio: 2 });
+  }
+
+  let STORY_POINTS_DATA = {
+    type: "FeatureCollection",
+    features: [
+      { type:"Feature", properties:{ id:"sicomines", label:"Sicomines" }, geometry:{ type:"Point", coordinates: COORD.sicomines } },
+      { type:"Feature", properties:{ id:"goma_airport", label:"Международный аэропорт Гомы" }, geometry:{ type:"Point", coordinates: COORD.gomaAirport } },
+      { type:"Feature", properties:{ id:"kigali", label:"Кигали" }, geometry:{ type:"Point", coordinates: COORD.kigali } },
+      { type:"Feature", properties:{ id:"goma_city", label:"Гома" }, geometry:{ type:"Point", coordinates: COORD.gomaCity } },
+      { type:"Feature", properties:{ id:"gl_drc", label:"ДР Конго" }, geometry:{ type:"Point", coordinates: COORD.drcCenter } },
+      { type:"Feature", properties:{ id:"gl_uganda", label:"Уганда" }, geometry:{ type:"Point", coordinates: COORD.kampala } },
+      { type:"Feature", properties:{ id:"gl_rwanda", label:"Руанда" }, geometry:{ type:"Point", coordinates: COORD.kigali } },
+      { type:"Feature", properties:{ id:"gl_burundi", label:"Бурунди" }, geometry:{ type:"Point", coordinates: COORD.bujumbura } },
+      { type:"Feature", properties:{ id:"gl_tanzania", label:"Танзания" }, geometry:{ type:"Point", coordinates: COORD.westTanzania } },
+      { type:"Feature", properties:{ id:"luanda", label:"Луанда" }, geometry:{ type:"Point", coordinates: COORD.luanda } },
+      { type:"Feature", properties:{ id:"kinshasa", label:"Киншаса" }, geometry:{ type:"Point", coordinates: COORD.kinshasa } },
+      { type:"Feature", properties:{ id:"antwerp", label:"Антверпен" }, geometry:{ type:"Point", coordinates: COORD.antwerp } },
+      { type:"Feature", properties:{ id:"kenge", label:"Кенге" }, geometry:{ type:"Point", coordinates: COORD.kenge } },
+      { type:"Feature", properties:{ id:"bujumbura", label:"Бужумбура" }, geometry:{ type:"Point", coordinates: COORD.bujumbura } },
+      { type:"Feature", properties:{ id:"kampala", label:"Кампала" }, geometry:{ type:"Point", coordinates: COORD.kampala } },
+      { type:"Feature", properties:{ id:"washington", label:"Вашингтон" }, geometry:{ type:"Point", coordinates: COORD.washington } },
+      { type:"Feature", properties:{ id:"kasese", label:"Касесе" }, geometry:{ type:"Point", coordinates: COORD.kasese } },
+      { type:"Feature", properties:{ id:"un_hq", label:"Штаб-квартира ООН" }, geometry:{ type:"Point", coordinates: COORD.unHQ } },
+      { type:"Feature", properties:{ id:"icc", label:"Международный уголовный суд" }, geometry:{ type:"Point", coordinates: COORD.icc } },
+      { type:"Feature", properties:{ id:"bulgaria_label", label:"Болгария" }, geometry:{ type:"Point", coordinates: COORD.bulgariaLabel } },
+      { type:"Feature", properties:{ id:"sofia", label:"София" }, geometry:{ type:"Point", coordinates: COORD.sofia } }
+    ]
+  };
+
+  function setStoryPointsData(){
+    const src = map.getSource("story_points");
+    if (src) src.setData(STORY_POINTS_DATA);
+  }
+
+  const STORY_ROUTES_DATA = {
+    type: "FeatureCollection",
+    features: [
+      { type:"Feature", properties:{ id:"lunda_kinshasa", mode:"dashed" }, geometry:{ type:"LineString", coordinates:[ COORD.lundaHub, toLngLat(-7.4, 18.4), toLngLat(-5.8, 16.6), COORD.kinshasa ] } },
+      { type:"Feature", properties:{ id:"bulgaria_zaire", mode:"dashed" }, geometry:{ type:"LineString", coordinates:[ COORD.sofia, toLngLat(35.0, 20.0), toLngLat(15.0, 18.0), COORD.kinshasa ] } },
+      { type:"Feature", properties:{ id:"burundi_attacks_1", mode:"solid" }, geometry:{ type:"LineString", coordinates:[ toLngLat(-3.5, 28.95), toLngLat(-3.45, 29.15), COORD.bujumbura ] } },
+      { type:"Feature", properties:{ id:"burundi_attacks_2", mode:"solid" }, geometry:{ type:"LineString", coordinates:[ toLngLat(-3.0, 29.0), toLngLat(-3.15, 29.35), COORD.gitega ] } },
+      { type:"Feature", properties:{ id:"burundi_attacks_3", mode:"solid" }, geometry:{ type:"LineString", coordinates:[ toLngLat(-2.7, 29.1), toLngLat(-2.75, 29.45), COORD.ngozi ] } },
+      { type:"Feature", properties:{ id:"allied_thrust_rwanda", mode:"solid" }, geometry:{ type:"LineString", coordinates:[ COORD.kigali, toLngLat(-2.7, 29.6), COORD.campSouthKivu ] } },
+      { type:"Feature", properties:{ id:"allied_thrust_uganda", mode:"solid" }, geometry:{ type:"LineString", coordinates:[ COORD.kampala, toLngLat(-0.4, 30.0), toLngLat(-2.0, 29.6), COORD.campSouthKivu ] } },
+      { type:"Feature", properties:{ id:"allied_thrust_burundi", mode:"solid" }, geometry:{ type:"LineString", coordinates:[ COORD.bujumbura, toLngLat(-3.45, 29.5), COORD.campSouthKivu ] } },
+      { type:"Feature", properties:{ id:"scatter_burundi", mode:"dashed" }, geometry:{ type:"LineString", coordinates:[ COORD.campSouthKivu, toLngLat(-3.3, 29.45), COORD.bujumbura ] } },
+      { type:"Feature", properties:{ id:"scatter_tanzania", mode:"dashed" }, geometry:{ type:"LineString", coordinates:[ COORD.campSouthKivu, toLngLat(-4.2, 29.8), COORD.kigoma ] } }
+    ]
+  };
+
+  const ROUTE_HEADS_DATA = {
+    type:"FeatureCollection",
+    features:[
+      { type:"Feature", properties:{ id:"burundi_attacks_1", glyph:"↘" }, geometry:{ type:"Point", coordinates: COORD.bujumbura } },
+      { type:"Feature", properties:{ id:"burundi_attacks_2", glyph:"↘" }, geometry:{ type:"Point", coordinates: COORD.gitega } },
+      { type:"Feature", properties:{ id:"burundi_attacks_3", glyph:"→" }, geometry:{ type:"Point", coordinates: COORD.ngozi } },
+      { type:"Feature", properties:{ id:"allied_thrust_rwanda", glyph:"↙" }, geometry:{ type:"Point", coordinates: COORD.campSouthKivu } },
+      { type:"Feature", properties:{ id:"allied_thrust_uganda", glyph:"↙" }, geometry:{ type:"Point", coordinates: COORD.campSouthKivu } },
+      { type:"Feature", properties:{ id:"allied_thrust_burundi", glyph:"↖" }, geometry:{ type:"Point", coordinates: COORD.campSouthKivu } },
+      { type:"Feature", properties:{ id:"scatter_burundi", glyph:"↘" }, geometry:{ type:"Point", coordinates: COORD.bujumbura } },
+      { type:"Feature", properties:{ id:"scatter_tanzania", glyph:"↘" }, geometry:{ type:"Point", coordinates: COORD.kigoma } }
+    ]
+  };
+
+  const LAKE_POINTS_DATA = {
+    type:"FeatureCollection",
+    features:[
+      { type:"Feature", properties:{ id:"lake_victoria", label:"Озеро Виктория", r:52 }, geometry:{ type:"Point", coordinates: COORD.lakeVictoria } },
+      { type:"Feature", properties:{ id:"lake_tanganyika", label:"Озеро Танганьика", r:48 }, geometry:{ type:"Point", coordinates: COORD.lakeTanganyika } },
+      { type:"Feature", properties:{ id:"lake_kivu", label:"Озеро Киву", r:24 }, geometry:{ type:"Point", coordinates: COORD.lakeKivu } },
+      { type:"Feature", properties:{ id:"lake_edward", label:"Озеро Эдуард", r:22 }, geometry:{ type:"Point", coordinates: COORD.lakeEdward } },
+      { type:"Feature", properties:{ id:"lake_albert", label:"Озеро Альберт", r:24 }, geometry:{ type:"Point", coordinates: COORD.lakeAlbert } }
+    ]
+  };
+
+  const CITY_HIGHLIGHTS_DATA = {
+    type:"FeatureCollection",
+    features:[
+      { type:"Feature", properties:{ id:"kasese", r:20 }, geometry:{ type:"Point", coordinates: COORD.kasese } }
+    ]
+  };
+
+  const HYDRO_LINES_DATA = {
+    type:"FeatureCollection",
+    features:[
+      { type:"Feature", properties:{ id:"ruzizi" }, geometry:{ type:"LineString", coordinates:[ COORD.ruziziNorth, COORD.ruziziMid, COORD.ruziziSouth, COORD.ruziziMouth ] } }
+    ]
+  };
+
+  const HYDRO_LABELS_DATA = {
+    type:"FeatureCollection",
+    features:[
+      {
+        type:"Feature",
+        properties:{ id:"ruzizi_label", label:"Река Рузизи" },
+        geometry:{ type:"Point", coordinates: COORD.ruziziLabel }
+      }
+    ]
+  };
+
+  const STEPS = {
+    intro: { mode:"ease", admin:[], center:[0,20], zoom:1.55, borders:[], adm1:[], goma:[], points:[] },
+
+    s1: {
+      mode:"fit",
+      admin:[ADMIN.DRC],
+      borders:[],
+      adm1:[],
+      goma:[],
+      points:[],
+      fallback:{center:COORD.drcCenter, zoom:2.8}
+    },
+
+    s2: {
+      mode:"ease",
+      admin:[],
+      center:COORD.katanga,
+      zoom:5.6,
+      offset:[270, 80],
+      borders:[],
+      adm1:["tanganyika","haut-lomami","lualaba","haut-katanga"],
+      goma:[],
+      pointsLabel:["tanganyika","haut-lomami","lualaba","haut-katanga"],
+      pointsDot:[]
+    },
+
+    s3: {
+      mode:"ease",
+      admin:[ADMIN.DRC],
+      center:COORD.sicomines,
+      zoom:7.4,
+      borders:[],
+      adm1:[],
+      goma:[],
+      points:["sicomines"]
+    },
+
+    s4: {
+      mode:"fit",
+      admin:[ADMIN.DRC, ADMIN.CHN],
+      borders:[],
+      adm1:[],
+      goma:[],
+      points:[],
+      fallback:{center:COORD.china, zoom:3.1}
+    },
+
+    s5: {
+      mode:"fit",
+      admin:[ADMIN.DRC, ADMIN.RUS],
+      borders:[],
+      adm1:[],
+      goma:[],
+      points:[],
+      fallback:{center:COORD.drcCenter, zoom:2.1}
+    },
+
+    s6: {
+      mode:"fit",
+      admin:[ADMIN.DRC, ADMIN.USA],
+      borders:[],
+      adm1:[],
+      goma:[],
+      points:[],
+      fallback:{center:COORD.usa, zoom:3.1}
+    },
+
+    s7: {
+      mode:"ease",
+      admin:[ADMIN.DRC],
+      center:COORD.drcCenter,
+      zoom:3.1,
+      borders:[],
+      adm1:[],
+      goma:[],
+      points:[]
+    },
+
+    interlude: {
+      mode:"ease",
+      admin:[],
+      center:COORD.drcCenter,
+      zoom:3.2,
+      borders:[],
+      adm1:[],
+      goma:[],
+      points:[]
+    },
+
+    goma: {
+      mode:"ease",
+      admin:[],
+      center:COORD.goma,
+      zoom:11.0,
+      offset:[260,0],
+      borders:[],
+      adm1:[],
+      goma:["goma"],
+      points:["goma_airport"]
+    },
+
+    goma_kigali: {
+      mode:"ease",
+      admin:[],
+      center: COORD.gomaCity,
+      zoom: 7.8,
+      offset:[220, 0],
+      borders:[],
+      adm1:[],
+      goma:[],
+      kigali:true,
+      route:"goma_kigali",
+      pointsLabel:["goma_city","kigali"],
+      pointsDot:["goma_city","kigali"]
+    },
+
+    hutu_exodus: {
+      mode:"ease",
+      admin:[],
+      borders:[],
+      adm1:[],
+      goma:[],
+      kigali:false,
+      route:"hutu",
+      pointsLabel:[],
+      pointsDot:[],
+      center: [(COORD.hutuFrom[0] + COORD.hutuTo[0]) / 2, (COORD.hutuFrom[1] + COORD.hutuTo[1]) / 2],
+      zoom: 6.0,
+      offset:[0,0]
+    },
+
+    great_lakes: {
+      mode:"ease",
+      admin:[],
+      center:[29.4, -2.6],
+      zoom:4.0,
+      pointsLabel:[],
+      pointsDot:[]
+    },
+
+    chapter_first_war: {
+      mode:"ease",
+      admin:[],
+      center:[20, 3],
+      zoom:2.35,
+      pointsLabel:[],
+      pointsDot:[]
+    },
+
+    fw_kivus: {
+      mode:"ease",
+      admin:[ADMIN.RWA],
+      center: toLngLat(-2.7, 28.9),
+      zoom:6.0,
+      offset:[240, 0],
+      adm1:["nord-kivu","nord kivu","north kivu","north-kivu","sud-kivu","sud kivu","south kivu","south-kivu"],
+      pointsLabel:[],
+      pointsDot:[]
+    },
+
+    fw_angola: {
+      mode:"ease",
+      admin:[ADMIN.AGO],
+      center:[17.9, -10.6],
+      zoom:4.15,
+      offset:[-220,0],
+      pointsLabel:["luanda"],
+      pointsDot:["luanda"],
+      fallback:{center:COORD.luanda, zoom:4.2}
+    },
+
+    fw_diamonds: {
+      mode:"ease",
+      admin:[],
+      center: toLngLat(-9.4, 20.6),
+      zoom:5.55,
+      offset:[220, 0],
+      angAdm1:["lunda norte","lunda-norte","lunda sul","lunda-sul"],
+      angDiamond:false,
+      pointsLabel:["lunda_norte","lunda_sul"],
+      pointsDot:[],
+      routesDashed:["lunda_kinshasa"],
+      routeHeads:[]
+    },
+
+    fw_bulgaria: {
+      mode:"fit",
+      admin:[ADMIN.BGR, ADMIN.DRC],
+      angAdm1:[],
+      angDiamond:false,
+      pointsLabel:[],
+      pointsDot:[],
+      routesDashed:[],
+      routeHeads:[],
+      fallback:{center:[18.8, 8.5], zoom:2.35}
+    },
+
+    fw_mobutu_diamonds: {
+      mode:"ease",
+      admin:[ADMIN.DRC],
+      center:COORD.kinshasa,
+      zoom:5.1,
+      pointsLabel:["kinshasa"],
+      pointsDot:["kinshasa"]
+    },
+
+    fw_antwerp: {
+      mode:"fitPoints",
+      admin:[],
+      fitCoords:[COORD.kinshasa, COORD.antwerp],
+      pointsLabel:["kinshasa","antwerp"],
+      pointsDot:["kinshasa","antwerp"],
+      routesDashed:[],
+      routeHeads:[],
+      padding:{ top: 90, bottom: 240, left: 80, right: 80 }
+    },
+
+    fw_kenge: {
+  mode:"ease",
+  admin:[],
+  center:[16.2, -4.55],
+  zoom:6,
+  offset:[260, 0],
+  pointsLabel:["kenge","kinshasa"],
+  pointsDot:["kenge","kinshasa"],
+  routesDashed:[],
+  routeHeads:[]
+},
+
+    fw_burundi_intro: {
+      mode:"ease",
+      admin:[ADMIN.BDI],
+      center:[29.7, -4.25],
+      zoom:4.85,
+      pointsLabel:["bujumbura"],
+      pointsDot:["bujumbura"]
+    },
+
+    fw_burundi_attacks: {
+      mode:"ease",
+      admin:[ADMIN.BDI],
+      center:[29.7, -4.25],
+      zoom:5.0,
+      offset:[-280,0],
+      pointsLabel:["bujumbura"],
+      pointsDot:["bujumbura"],
+      routesDashed:["scatter_burundi","scatter_tanzania"],
+      routeHeads:["scatter_burundi","scatter_tanzania"],
+      fallback:{center:COORD.bujumbura, zoom:6.2}
+    },
+
+    fw_southkivu_assault: {
+      mode:"ease",
+      admin:[],
+      center:COORD.campSouthKivu,
+      zoom:6.25,
+      offset:[220, 0],
+      adm1:["sud-kivu","sud kivu","south kivu","south-kivu"],
+      routesSolid:["allied_thrust_rwanda","allied_thrust_uganda","allied_thrust_burundi"],
+      routeHeads:["allied_thrust_rwanda","allied_thrust_uganda","allied_thrust_burundi"]
+    },
+
+    fw_rebel_scatter: {
+      mode:"ease",
+      admin:[],
+      center:[29.8, -4.45],
+      zoom:5.2,
+      adm1:["sud-kivu","sud kivu","south kivu","south-kivu"],
+      routesDashed:["scatter_burundi","scatter_tanzania"],
+      routeHeads:["scatter_burundi","scatter_tanzania"]
+    },
+
+    fw_uganda: {
+      mode:"ease",
+      admin:[ADMIN.UGA],
+      center:[32.2, 1.4],
+      zoom:4.85,
+      pointsLabel:["kampala"],
+      pointsDot:["kampala"],
+      padding:{ top: 80, bottom: 250, left: 80, right: 80 },
+      fallback:{center:COORD.kampala, zoom:5.0}
+    },
+
+    fw_adf_nkivu: {
+      mode:"ease",
+      admin:[],
+      center: toLngLat(0.0, 29.8),
+      zoom:6.25,
+      offset:[220,0],
+      adm1:["nord-kivu","nord kivu","north kivu","north-kivu"]
+    },
+
+    fw_kasese: {
+      mode:"ease",
+      admin:[],
+      center:COORD.kasese,
+      zoom:7.75,
+      offset:[220,0],
+      pointsLabel:[],
+      pointsDot:[],
+      cityHighlights:["kasese"],
+      ugAdm2:["kasese","kasese district"]
+    },
+
+    fw_washington: {
+      mode:"ease",
+      admin:[],
+      center:COORD.washington,
+      zoom:2,
+      offset:[220,0],
+      pointsLabel:["washington"],
+      pointsDot:["washington"],
+      routesDashed:[],
+      routeHeads:[]
+    },
+
+    fw_atrocities: {
+      mode:"ease",
+      admin:[],
+      center: toLngLat(-3.0, 28.9),
+      zoom:6.15,
+      adm1:[],
+      hydro:["ruzizi"],
+      hydroLabels:["ruzizi_label"]
+    },
+
+    fw_kinshasa: {
+      mode:"ease",
+      admin:[],
+      center:[20, 1.5],
+      zoom:2.15,
+      pointsLabel:[],
+      pointsDot:[]
+    },
+
+    fw_un_icc: {
+      mode:"ease",
+      admin:[],
+      center:[-34.5, 46.2],
+      zoom:2.15,
+      pointsLabel:["un_hq","icc"],
+      pointsDot:["un_hq","icc"],
+      padding:{ top: 70, bottom: 220, left: 120, right: 70 }
+    },
+
+    end: {
+      mode:"ease",
+      admin:[],
+      center:[0,20],
+      zoom:1.55,
+      borders:[],
+      adm1:[],
+      goma:[],
+      points:[]
+    }
+  };
+
+  function fitToAdmin(adminLowerList, padding){
+    let b = null;
+    for (const a of adminLowerList) b = bboxUnion(b, ADMIN_BBOX[a]);
+    if (!b) return false;
+    map.fitBounds(bboxToBounds(b), {
+      padding: padding || { top: 40, bottom: 220, left: 40, right: 40 },
+      duration: 900
+    });
+    return true;
+  }
+
+  let CURRENT_STEP = "intro";
+
+  function raiseStoryPoints(){
+    const layers = [
+      "line_goma_kigali",
+      "line_hutu",
+      "line_kenge_kinshasa",
+      "line_kinshasa_antwerp",
+      "label_hutu",
+      "story_routes_dashed",
+      "story_routes_solid",
+      "story_route_heads",
+      "hydro_lines",
+      "hydro_labels",
+      "great_lakes_fill",
+      "great_lakes_line",
+      "great_lakes_label",
+      "city_highlights",
+      "story_points_dot",
+      "story_points_label",
+      "hi-kigali-fill",
+      "hi-kigali-line"
+    ];
+    for (const id of layers) if (map.getLayer(id)) map.moveLayer(id);
+  }
+
+  function activate(stepId){
+    CURRENT_STEP = stepId;
+    closeMediaModal();
+    showMidHint(stepId === "interlude");
+    showCenterPlate(CHAPTER_STEPS[stepId] || "");
+
+    const s = STEPS[stepId];
+    if(!s || !map.loaded()) return;
+
+    setCardSide(stepId);
+    const card = PAR[stepId] || {title:"", parts:[]};
+    setCardTitle(card.title || "");
+    setCardParts(card.parts || []);
+    setCardActions(CARD_ACTIONS[stepId] || []);
+
+    const isChapter = !!CHAPTER_STEPS[stepId];
+    showCard(stepId !== "end" && stepId !== "intro" && stepId !== "interlude" && !isChapter);
+
+    if (map.getLayer(L.countriesFill))    setFilterCountriesByAdmin(L.countriesFill, s.admin || []);
+    if (map.getLayer(L.countriesOutline)) setFilterCountriesByAdmin(L.countriesOutline, s.admin || []);
+
+    const bl = (s.borders || []).map(x => x.toLowerCase());
+    if (map.getLayer(L.bordersLine)) setFilterBordersADMIN(L.bordersLine, bl);
+
+    const a1 = (s.adm1 || []).map(x => x.toLowerCase());
+    if (map.getLayer(L.adm1Fill)) setFilterByShapeName(L.adm1Fill, a1);
+    if (map.getLayer(L.adm1Line)) setFilterByShapeName(L.adm1Line, a1);
+
+    const g2 = (s.goma || []).map(x => x.toLowerCase());
+    if (map.getLayer(L.gomaFill)) setFilterByShapeName(L.gomaFill, g2);
+    if (map.getLayer(L.gomaLine)) setFilterByShapeName(L.gomaLine, g2);
+
+    const ao = (s.angAdm1 || []).map(x => x.toLowerCase());
+    if (map.getLayer(L.agoAdm1Fill)) setFilterByShapeName(L.agoAdm1Fill, ao);
+    if (map.getLayer(L.agoAdm1Line)) setFilterByShapeName(L.agoAdm1Line, ao);
+    if (map.getLayer(L.agoAdm1Diamond)) {
+      setFilterByShapeName(L.agoAdm1Diamond, ao);
+      map.setLayoutProperty(L.agoAdm1Diamond, "visibility", s.angDiamond ? "visible" : "none");
+    }
+
+    const ug2 = (s.ugAdm2 || []).map(x => x.toLowerCase());
+    if (map.getLayer(L.ugaAdm2Fill)) setFilterByShapeName(L.ugaAdm2Fill, ug2);
+    if (map.getLayer(L.ugaAdm2Line)) setFilterByShapeName(L.ugaAdm2Line, ug2);
+
+    const showGK = (s.route === "goma_kigali");
+    const showH  = (s.route === "hutu");
+
+    if (map.getLayer("line_goma_kigali")) map.setLayoutProperty("line_goma_kigali","visibility", showGK ? "visible" : "none");
+    if (map.getLayer("line_hutu"))        map.setLayoutProperty("line_hutu","visibility", showH  ? "visible" : "none");
+    if (map.getLayer("label_hutu"))       map.setLayoutProperty("label_hutu","visibility", showH  ? "visible" : "none");
+
+    const showKengeKinshasa = (stepId === "fw_kenge");
+    const showKinshasaAntwerp = (stepId === "fw_antwerp");
+
+    if (map.getLayer("line_kenge_kinshasa")) {
+      map.setLayoutProperty("line_kenge_kinshasa", "visibility", showKengeKinshasa ? "visible" : "none");
+    }
+    if (map.getLayer("line_kinshasa_antwerp")) {
+      map.setLayoutProperty("line_kinshasa_antwerp", "visibility", showKinshasaAntwerp ? "visible" : "none");
+    }
+
+    const dashedIds = (s.routesDashed || []);
+    const solidIds  = (s.routesSolid  || []);
+    const headIds   = (s.routeHeads   || []);
+
+    if (map.getLayer("story_routes_dashed")) {
+      map.setFilter("story_routes_dashed", ["all",
+        ["==", ["coalesce", ["get","mode"], ""], "dashed"],
+        ["match", ["coalesce", ["get","id"], ""], dashedIds.length ? dashedIds : ["___none___"], true, false]
+      ]);
+      map.setLayoutProperty("story_routes_dashed", "visibility", dashedIds.length ? "visible" : "none");
+    }
+
+    if (map.getLayer("story_routes_solid")) {
+      map.setFilter("story_routes_solid", ["all",
+        ["==", ["coalesce", ["get","mode"], ""], "solid"],
+        ["match", ["coalesce", ["get","id"], ""], solidIds.length ? solidIds : ["___none___"], true, false]
+      ]);
+      map.setLayoutProperty("story_routes_solid", "visibility", solidIds.length ? "visible" : "none");
+    }
+
+    if (map.getLayer("story_route_heads")) {
+      map.setFilter("story_route_heads", ["match", ["coalesce", ["get","id"], ""], headIds.length ? headIds : ["___none___"], true, false]);
+      map.setLayoutProperty("story_route_heads", "visibility", headIds.length ? "visible" : "none");
+    }
+
+    const cityIds = (s.cityHighlights || []);
+    if (map.getLayer("city_highlights")) {
+      map.setFilter("city_highlights", ["in", ["coalesce", ["get","id"], ""], ["literal", cityIds.length ? cityIds : ["___none___"]]]);
+      map.setLayoutProperty("city_highlights", "visibility", cityIds.length ? "visible" : "none");
+    }
+
+    const hydroIds = (s.hydro || []);
+    if (map.getLayer("hydro_lines")) {
+      map.setFilter("hydro_lines", ["in", ["coalesce", ["get","id"], ""], ["literal", hydroIds.length ? hydroIds : ["___none___"]]]);
+      map.setLayoutProperty("hydro_lines", "visibility", hydroIds.length ? "visible" : "none");
+    }
+
+    const hydroLabelIds = (s.hydroLabels || []);
+    if (map.getLayer("hydro_labels")) {
+      map.setFilter("hydro_labels", ["in", ["coalesce", ["get","id"], ""], ["literal", hydroLabelIds.length ? hydroLabelIds : ["___none___"]]]);
+      map.setLayoutProperty("hydro_labels", "visibility", hydroLabelIds.length ? "visible" : "none");
+    }
+
+    const greatLakeNames = [
+      "lake victoria",
+      "lake tanganyika",
+      "lake kivu",
+      "lake edward",
+      "lake albert"
+    ];
+
+    const greatLakesFilter = stepId === "great_lakes"
+      ? ["match",
+          ["downcase", ["coalesce", ["get","name"], ""]],
+          greatLakeNames,
+          true,
+          false
+        ]
+      : ["==", 1, 0];
+
+    if (map.getLayer("great_lakes_fill")) {
+      map.setFilter("great_lakes_fill", greatLakesFilter);
+      map.setLayoutProperty("great_lakes_fill", stepId === "great_lakes" ? "visible" : "none");
+    }
+    if (map.getLayer("great_lakes_line")) {
+      map.setFilter("great_lakes_line", greatLakesFilter);
+      map.setLayoutProperty("great_lakes_line", stepId === "great_lakes" ? "visible" : "none");
+    }
+    if (map.getLayer("great_lakes_label")) {
+      map.setFilter("great_lakes_label", greatLakesFilter);
+      map.setLayoutProperty("great_lakes_label", stepId === "great_lakes" ? "visible" : "none");
+    }
+
+    const showKigali = !!s.kigali;
+    const kigaliMatch = ["any",
+      ["in", "kigali", ["downcase", ["coalesce", ["get","shapeName"], ""]]],
+      ["in", "kigali", ["downcase", ["coalesce", ["get","shapeISO"], ""]]]
+    ];
+
+    if (map.getLayer("hi-kigali-fill")) {
+      map.setLayoutProperty("hi-kigali-fill","visibility", showKigali ? "visible" : "none");
+      map.setFilter("hi-kigali-fill", showKigali ? kigaliMatch : ["==",1,0]);
+    }
+
+    if (map.getLayer("hi-kigali-line")) {
+      map.setLayoutProperty("hi-kigali-line","visibility", showKigali ? "visible" : "none");
+      map.setFilter("hi-kigali-line", showKigali ? kigaliMatch : ["==",1,0]);
+    }
+
+    const ptsLabel = (s.pointsLabel ?? s.points ?? []);
+    const ptsDot   = (s.pointsDot   ?? s.points ?? []);
+
+    const filterLabel = ["in", ["coalesce", ["get","id"], ""], ["literal", ptsLabel.length ? ptsLabel : ["___none___"]]];
+    const filterDot   = ["in", ["coalesce", ["get","id"], ""], ["literal", ptsDot.length   ? ptsDot   : ["___none___"]]];
+
+    if (map.getLayer("story_points_label")) map.setFilter("story_points_label", filterLabel);
+    if (map.getLayer("story_points_dot"))   map.setFilter("story_points_dot",   filterDot);
+
+    if (s.mode === "fitPoints") {
+      const ok = fitToCoords(s.fitCoords || [], s.padding);
+      if (!ok && s.fallback) map.easeTo({ center: s.fallback.center, zoom: s.fallback.zoom, duration: 900 });
+    } else if (s.mode === "fit") {
+      const ok = fitToAdmin(s.admin || [], s.padding);
+      if (!ok && s.fallback) map.easeTo({ center: s.fallback.center, zoom: s.fallback.zoom, duration: 900 });
+    } else {
+      const offset = s.offset || [0,0];
+      map.easeTo({ center: s.center, zoom: s.zoom, duration: 900, offset });
+    }
+
+    raiseStoryPoints();
+  }
+
+  function reactivateCurrent(){ activate(CURRENT_STEP); }
+
+  map.on("load", () => {
+    setMapLanguage("ru");
+    LOAD.style = true;
+    updateLoader();
+
+    try {
+      addDiamondPattern();
+    } catch (e) {
+      console.error("Diamond pattern init failed:", e);
+    }
+
+    map.addSource("route_goma_kigali", {
+      type:"geojson",
+      data:{
+        type:"FeatureCollection",
+        features:[
+          { type:"Feature", properties:{ id:"goma_kigali" }, geometry:{ type:"LineString", coordinates:[ COORD.gomaCity, COORD.kigali ] } }
+        ]
+      }
+    });
+
+    map.addSource("route_hutu", {
+      type:"geojson",
+      data:{
+        type:"FeatureCollection",
+        features:[
+          { type:"Feature", properties:{ id:"hutu", label:"Хуту" }, geometry:{ type:"LineString", coordinates:[ COORD.hutuFrom, COORD.hutuTo ] } }
+        ]
+      }
+    });
+
+    map.addSource("route_kenge_kinshasa", {
+      type:"geojson",
+      data:{
+        type:"FeatureCollection",
+        features:[
+          {
+            type:"Feature",
+            properties:{ id:"kenge_kinshasa" },
+            geometry:{ type:"LineString", coordinates:[ COORD.kenge, COORD.kinshasa ] }
+          }
+        ]
+      }
+    });
+
+    map.addSource("route_kinshasa_antwerp", {
+      type:"geojson",
+      data:{
+        type:"FeatureCollection",
+        features:[
+          {
+            type:"Feature",
+            properties:{ id:"kinshasa_antwerp" },
+            geometry:{ type:"LineString", coordinates:[ COORD.kinshasa, COORD.antwerp ] }
+          }
+        ]
+      }
+    });
+
+    map.addLayer({
+      id:"line_goma_kigali",
+      type:"line",
+      source:"route_goma_kigali",
+      layout:{
+        visibility:"none",
+        "line-cap":"butt",
+        "line-join":"round"
+      },
+      paint:{
+        "line-color":"rgba(220,38,38,0.98)",
+        "line-width": 3.2,
+        "line-dasharray":[2,2]
+      }
+    });
+
+    map.addLayer({
+      id:"line_hutu",
+      type:"line",
+      source:"route_hutu",
+      layout:{
+        visibility:"none",
+        "line-cap":"butt",
+        "line-join":"round"
+      },
+      paint:{
+        "line-color":"rgba(220,38,38,0.98)",
+        "line-width": 3.2,
+        "line-dasharray":[1.5,1.5]
+      }
+    });
+
+    map.addLayer({
+      id:"line_kenge_kinshasa",
+      type:"line",
+      source:"route_kenge_kinshasa",
+      layout:{
+        visibility:"none",
+        "line-cap":"butt",
+        "line-join":"round"
+      },
+      paint:{
+        "line-color":"rgba(220,38,38,0.98)",
+        "line-width": 3.2,
+        "line-dasharray":[2,2]
+      }
+    });
+
+    map.addLayer({
+      id:"line_kinshasa_antwerp",
+      type:"line",
+      source:"route_kinshasa_antwerp",
+      layout:{
+        visibility:"none",
+        "line-cap":"butt",
+        "line-join":"round"
+      },
+      paint:{
+        "line-color":"rgba(220,38,38,0.98)",
+        "line-width": 3.2,
+        "line-dasharray":[2,2]
+      }
+    });
+
+    map.addLayer({
+      id:"label_hutu",
+      type:"symbol",
+      source:"route_hutu",
+      layout:{
+        visibility:"none",
+        "symbol-placement":"line",
+        "text-field":["coalesce", ["get","label"], ""],
+        "text-font":["Open Sans Bold","Open Sans Regular"],
+        "text-size": 18,
+        "text-offset":[0, 0.8],
+        "text-allow-overlap": true
+      },
+      paint:{
+        "text-color":"rgba(17,24,39,1)",
+        "text-halo-color":"rgba(255,255,255,0.95)",
+        "text-halo-width": 2.5
+      }
+    });
+
+    map.addSource("story_routes", { type:"geojson", data: STORY_ROUTES_DATA });
+
+    map.addLayer({
+      id:"story_routes_dashed",
+      type:"line",
+      source:"story_routes",
+      layout:{
+        visibility:"none",
+        "line-cap":"butt",
+        "line-join":"round"
+      },
+      filter:["all", ["==", ["coalesce", ["get","mode"], ""], "dashed"], ["==", 1, 0]],
+      paint:{
+        "line-color":"rgba(220,38,38,0.99)",
+        "line-width": 3.2,
+        "line-opacity": 1,
+        "line-dasharray":[2,2]
+      }
+    });
+
+    map.addLayer({
+      id:"story_routes_solid",
+      type:"line",
+      source:"story_routes",
+      layout:{
+        visibility:"none",
+        "line-cap":"round",
+        "line-join":"round"
+      },
+      filter:["all", ["==", ["coalesce", ["get","mode"], ""], "solid"], ["==", 1, 0]],
+      paint:{
+        "line-color":"rgba(220,38,38,0.99)",
+        "line-width": 4.2
+      }
+    });
+
+    map.addSource("route_heads", { type:"geojson", data: ROUTE_HEADS_DATA });
+    map.addLayer({
+      id:"story_route_heads",
+      type:"symbol",
+      source:"route_heads",
+      layout:{
+        visibility:"none",
+        "text-field":["coalesce", ["get","glyph"], ""],
+        "text-font":["Open Sans Bold", "Open Sans Regular"],
+        "text-size":["interpolate", ["linear"], ["zoom"], 3, 18, 7, 26, 10, 30],
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      filter:["==", 1, 0],
+      paint:{
+        "text-color":"rgba(220,38,38,1)",
+        "text-halo-color":"rgba(255,255,255,0.98)",
+        "text-halo-width": 2.2
+      }
+    });
+
+    map.addSource("hydro_lines", { type:"geojson", data: HYDRO_LINES_DATA });
+    map.addLayer({
+      id:"hydro_lines",
+      type:"line",
+      source:"hydro_lines",
+      layout:{ visibility:"none" },
+      filter:["==", 1, 0],
+      paint:{
+        "line-color":"rgba(56,189,248,1)",
+        "line-width": 5,
+        "line-opacity": 1
+      }
+    });
+
+    map.addSource("hydro_labels", { type:"geojson", data: HYDRO_LABELS_DATA });
+    map.addLayer({
+      id:"hydro_labels",
+      type:"symbol",
+      source:"hydro_labels",
+      layout:{
+        visibility:"none",
+        "text-field":["coalesce", ["get","label"], ""],
+        "text-font":["Open Sans Bold", "Open Sans Regular"],
+        "text-size":["interpolate", ["linear"], ["zoom"], 4, 12, 7, 16, 10, 20],
+        "text-offset":[0, 0.8],
+        "text-anchor":"top",
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      filter:["==", 1, 0],
+      paint:{
+        "text-color":"rgba(186,230,253,1)",
+        "text-halo-color":"rgba(3,7,18,0.88)",
+        "text-halo-width": 1.8
+      }
+    });
+
+    map.addSource("city_highlights", { type:"geojson", data: CITY_HIGHLIGHTS_DATA });
+    map.addLayer({
+      id:"city_highlights",
+      type:"circle",
+      source:"city_highlights",
+      layout:{ visibility:"none" },
+      filter:["==", 1, 0],
+      paint:{
+        "circle-color":"rgba(220,38,38,0.18)",
+        "circle-stroke-color":"rgba(220,38,38,0.96)",
+        "circle-stroke-width": 2.2,
+        "circle-radius":["interpolate", ["linear"], ["zoom"], 4, 8, 7, 14, 10, 22]
+      }
+    });
+
+    map.addSource("story_points", { type:"geojson", data: STORY_POINTS_DATA });
+
+    map.addLayer({
+      id: "story_points_dot",
+      type: "circle",
+      source: "story_points",
+      paint: {
+        "circle-color": "rgba(220,38,38,1.0)",
+        "circle-stroke-color": "rgba(255,255,255,1.0)",
+        "circle-stroke-width": 2,
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 2, 3, 6, 6, 10, 10]
+      }
+    });
+
+    map.addLayer({
+      id: "story_points_label",
+      type: "symbol",
+      source: "story_points",
+      layout: {
+        "text-field": ["coalesce", ["get","label"], ""],
+        "text-font": ["Open Sans Bold", "Open Sans Regular"],
+        "text-offset": [
+          "case",
+          ["==", ["coalesce", ["get","id"], ""], "lualaba"], ["literal", [-1.2, 1.6]],
+          ["==", ["coalesce", ["get","id"], ""], "gl_drc"], ["literal", [0, 0.2]],
+          ["==", ["coalesce", ["get","id"], ""], "gl_tanzania"], ["literal", [0, 0.2]],
+          ["literal", [0, 1.15]]
+        ],
+        "text-anchor": [
+          "case",
+          ["==", ["coalesce", ["get","id"], ""], "lualaba"], "top-right",
+          ["==", ["coalesce", ["get","id"], ""], "gl_drc"], "center",
+          ["==", ["coalesce", ["get","id"], ""], "gl_tanzania"], "center",
+          "top"
+        ],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 2, 13, 6, 18, 10, 24],
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      paint: {
+        "text-color": "rgba(17,24,39,1.0)",
+        "text-halo-color": "rgba(255,255,255,0.92)",
+        "text-halo-width": 2
+      }
+    });
+
+    map.setFilter("story_points_dot", ["in", ["coalesce", ["get","id"], ""], ["literal", ["___none___"]]]);
+    map.setFilter("story_points_label", ["in", ["coalesce", ["get","id"], ""], ["literal", ["___none___"]]]);
+
+    (async () => {
+      try {
+        const lakes = await loadGeoJSON(NE_LAKES);
+        map.addSource("great_lakes_polygons", { type:"geojson", data:lakes });
+
+        map.addLayer({
+          id:"great_lakes_fill",
+          type:"fill",
+          source:"great_lakes_polygons",
+          layout:{ visibility:"none" },
+          filter:["==", 1, 0],
+          paint:{
+            "fill-color":"rgba(56,189,248,0.52)",
+            "fill-outline-color":"rgba(125,211,252,1)"
+          }
+        });
+
+        map.addLayer({
+          id:"great_lakes_line",
+          type:"line",
+          source:"great_lakes_polygons",
+          layout:{ visibility:"none" },
+          filter:["==", 1, 0],
+          paint:{
+            "line-color":"rgba(125,211,252,1)",
+            "line-width": 2.8
+          }
+        });
+
+        map.addLayer({
+          id:"great_lakes_label",
+          type:"symbol",
+          source:"great_lakes_polygons",
+          layout:{
+            visibility:"none",
+            "text-field":["coalesce", ["get","name_ru"], ["get","name"], ""],
+            "text-font":["Open Sans Bold", "Open Sans Regular"],
+            "text-size":["interpolate", ["linear"], ["zoom"], 3, 12, 6, 16, 10, 20],
+            "text-allow-overlap": true,
+            "text-ignore-placement": true
+          },
+          filter:["==", 1, 0],
+          paint:{
+            "text-color":"rgba(186,230,253,1)",
+            "text-halo-color":"rgba(3,7,18,0.88)",
+            "text-halo-width": 1.8
+          }
+        });
+      } catch (e) {
+        console.warn("Great Lakes polygons load skipped:", e);
+      } finally {
+        LOAD.lakes = true;
+        updateLoader();
+        reactivateCurrent();
+        raiseStoryPoints();
+      }
+    })();
+
+    (async () => {
+      try {
+        const uga2 = await loadGeoJSON(GB_UGA_ADM2);
+        map.addSource("uga_adm2", { type:"geojson", data:uga2 });
+
+        map.addLayer({
+          id: L.ugaAdm2Fill,
+          type:"fill",
+          source:"uga_adm2",
+          paint:{ "fill-color":"rgba(220,38,38,0.24)", "fill-outline-color":"rgba(220,38,38,1.0)" },
+          filter:["==",1,0]
+        });
+
+        map.addLayer({
+          id: L.ugaAdm2Line,
+          type:"line",
+          source:"uga_adm2",
+          paint:{ "line-color":"rgba(220,38,38,1.0)", "line-width": 2.8 },
+          filter:["==",1,0]
+        });
+      } catch (e) {
+        console.warn("UGA ADM2 load skipped:", e);
+      } finally {
+        LOAD.uga = true;
+        updateLoader();
+        reactivateCurrent();
+        raiseStoryPoints();
+      }
+    })();
+
+    window.activate = activate;
+    activate("intro");
+    raiseStoryPoints();
+
+    (async () => {
+      try {
+        const countries = await loadGeoJSON(NE_COUNTRIES);
+
+        for (const f of (countries.features || [])) {
+          const p = f.properties || {};
+          const admin = String(propsAdmin(p)).toLowerCase();
+          if (!admin) continue;
+          const b = bboxOfGeometry(f.geometry);
+          if (b) ADMIN_BBOX[admin] = b;
+        }
+
+        map.addSource("ne_countries", { type:"geojson", data:countries });
+
+        map.addLayer({
+          id: L.countriesFill,
+          type:"fill",
+          source:"ne_countries",
+          paint:{ "fill-color":"rgba(220,38,38,0.38)", "fill-outline-color":"rgba(220,38,38,0.98)" },
+          filter:["in", ["downcase", adminFieldExpr()], ["literal", ["___none___"]]]
+        });
+
+        map.addLayer({
+          id: L.countriesOutline,
+          type:"line",
+          source:"ne_countries",
+          paint:{ "line-color":"rgba(220,38,38,1.0)", "line-width": 2.8 },
+          filter:["in", ["downcase", adminFieldExpr()], ["literal", ["___none___"]]]
+        });
+
+        map.addLayer({
+          id: L.bordersLine,
+          type:"line",
+          source:"ne_countries",
+          paint:{ "line-color":"rgba(220,38,38,0.95)", "line-width": 3.0 },
+          filter:["in", ["downcase", adminFieldExpr()], ["literal", ["___none___"]]]
+        });
+
+      } catch (e) {
+        console.error("Countries load failed:", e);
+      } finally {
+        LOAD.countries = true;
+        updateLoader();
+        reactivateCurrent();
+        raiseStoryPoints();
+      }
+    })();
+
+    (async () => {
+      try {
+        const adm1 = await loadGeoJSON(GB_COD_ADM1);
+        map.addSource("cod_adm1", { type:"geojson", data:adm1 });
+
+        map.addLayer({
+          id: L.adm1Fill,
+          type:"fill",
+          source:"cod_adm1",
+          paint:{ "fill-color":"rgba(220,38,38,0.25)", "fill-outline-color":"rgba(220,38,38,0.98)" },
+          filter:["in", ["downcase", ["coalesce", ["get","shapeName"], ""]], ["literal", ["___none___"]]]
+        });
+
+        map.addLayer({
+          id: L.adm1Line,
+          type:"line",
+          source:"cod_adm1",
+          paint:{ "line-color":"rgba(220,38,38,1.0)", "line-width": 2.8 },
+          filter:["in", ["downcase", ["coalesce", ["get","shapeName"], ""]], ["literal", ["___none___"]]]
+        });
+
+        const wanted = new Map([
+          ["tanganyika", "Танганьика"],
+          ["haut-lomami", "Верхний Ломами"],
+          ["lualaba", "Луалаба"],
+          ["haut-katanga", "Верхняя Катанга"]
+        ]);
+
+        for (const f of (adm1.features || [])) {
+          const name = String(f?.properties?.shapeName ?? f?.properties?.name ?? f?.properties?.NAME_1 ?? "").toLowerCase();
+          if (!wanted.has(name)) continue;
+          const center = centerOfGeometryBBox(f.geometry);
+          if (!center) continue;
+          const id = name;
+          const label = wanted.get(name);
+          const exists = STORY_POINTS_DATA.features.some(x => x?.properties?.id === id);
+          if (!exists) {
+            STORY_POINTS_DATA.features.push({ type:"Feature", properties:{ id, label }, geometry:{ type:"Point", coordinates: center } });
+          }
+        }
+        setStoryPointsData();
+
+      } catch (e) {
+        console.error("ADM1 load failed:", e);
+      } finally {
+        LOAD.adm1 = true;
+        updateLoader();
+        reactivateCurrent();
+        raiseStoryPoints();
+      }
+    })();
+
+    (async () => {
+      try {
+        const adm2 = await loadGeoJSON(GB_COD_ADM2);
+        map.addSource("cod_adm2", { type:"geojson", data:adm2 });
+
+        map.addLayer({
+          id: L.gomaFill,
+          type:"fill",
+          source:"cod_adm2",
+          paint:{ "fill-color":"rgba(220,38,38,0.30)", "fill-outline-color":"rgba(220,38,38,1.0)" },
+          filter:["in", ["downcase", ["coalesce", ["get","shapeName"], ""]], ["literal", ["___none___"]]]
+        });
+
+        map.addLayer({
+          id: L.gomaLine,
+          type:"line",
+          source:"cod_adm2",
+          paint:{ "line-color":"rgba(220,38,38,1.0)", "line-width": 3.2 },
+          filter:["in", ["downcase", ["coalesce", ["get","shapeName"], ""]], ["literal", ["___none___"]]]
+        });
+
+      } catch (e) {
+        console.error("ADM2 load failed:", e);
+      } finally {
+        LOAD.adm2 = true;
+        updateLoader();
+        reactivateCurrent();
+        raiseStoryPoints();
+      }
+    })();
+
+    (async () => {
+      try {
+        const rwa3 = await loadGeoJSON(GB_RWA_ADM3);
+        map.addSource("rwa_adm3", { type:"geojson", data:rwa3 });
+
+        map.addLayer({
+          id:"hi-kigali-fill",
+          type:"fill",
+          source:"rwa_adm3",
+          layout:{ visibility:"none" },
+          paint:{ "fill-color":"rgba(220,38,38,0.28)", "fill-outline-color":"rgba(220,38,38,1)" },
+          filter:["==", 1, 0]
+        });
+
+        map.addLayer({
+          id:"hi-kigali-line",
+          type:"line",
+          source:"rwa_adm3",
+          layout:{ visibility:"none" },
+          paint:{ "line-color":"rgba(220,38,38,1)", "line-width": 2.8 },
+          filter:["==", 1, 0]
+        });
+
+      } catch (e) {
+        console.error("RWA ADM3 load failed:", e);
+      } finally {
+        LOAD.rwa = true;
+        updateLoader();
+        reactivateCurrent();
+        raiseStoryPoints();
+      }
+    })();
+
+    (async () => {
+      try {
+        const ago1 = await loadGeoJSON(GB_AGO_ADM1);
+        map.addSource("ago_adm1", { type:"geojson", data:ago1 });
+
+        map.addLayer({
+          id: L.agoAdm1Fill,
+          type:"fill",
+          source:"ago_adm1",
+          paint:{ "fill-color":"rgba(220,38,38,0.24)", "fill-outline-color":"rgba(220,38,38,1.0)" },
+          filter:["in", ["downcase", ["coalesce", ["get","shapeName"], ""]], ["literal", ["___none___"]]]
+        });
+
+        map.addLayer({
+          id: L.agoAdm1Diamond,
+          type:"fill",
+          source:"ago_adm1",
+          layout:{ visibility:"none" },
+          paint:{ "fill-pattern":"diamond-pattern", "fill-opacity": 0.9 },
+          filter:["in", ["downcase", ["coalesce", ["get","shapeName"], ""]], ["literal", ["___none___"]]]
+        });
+
+        map.addLayer({
+          id: L.agoAdm1Line,
+          type:"line",
+          source:"ago_adm1",
+          paint:{ "line-color":"rgba(220,38,38,1.0)", "line-width": 2.8 },
+          filter:["in", ["downcase", ["coalesce", ["get","shapeName"], ""]], ["literal", ["___none___"]]]
+        });
+
+        const wantedAgo = new Map([
+          ["lunda norte", "Лунда-Норте"],
+          ["lunda sul", "Лунда-Суль"]
+        ]);
+
+        for (const f of (ago1.features || [])) {
+          const name = String(f?.properties?.shapeName ?? f?.properties?.name ?? f?.properties?.NAME_1 ?? "").toLowerCase();
+          if (!wantedAgo.has(name)) continue;
+          const center = centerOfGeometryBBox(f.geometry);
+          if (!center) continue;
+          const id = name === "lunda norte" ? "lunda_norte" : "lunda_sul";
+          const label = wantedAgo.get(name);
+          const exists = STORY_POINTS_DATA.features.some(x => x?.properties?.id === id);
+          if (!exists) {
+            STORY_POINTS_DATA.features.push({ type:"Feature", properties:{ id, label }, geometry:{ type:"Point", coordinates: center } });
+          }
+        }
+        setStoryPointsData();
+
+      } catch (e) {
+        console.error("AGO ADM1 load failed:", e);
+      } finally {
+        LOAD.ago = true;
+        updateLoader();
+        reactivateCurrent();
+        raiseStoryPoints();
+      }
+    })();
+  });
+
+  const scroller = scrollama();
+  scroller
+    .setup({ step: ".step", offset: 0.62 })
+    .onStepEnter(resp => {
+      const id = resp.element.dataset.step;
+      if (id === "end") {
+        showCard(false);
+        showCenterPlate("");
+        closeMediaModal();
+        return;
+      }
+      activate(id);
+    });
+
+  window.addEventListener("resize", () => scroller.resize());
+
+  function bootFirstStep(){
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        activate("intro");
+        showCard(false);
+      });
+    });
+  }
+  bootFirstStep();
+</script>
+</body>
+</html>
