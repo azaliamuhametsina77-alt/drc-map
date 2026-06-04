@@ -234,6 +234,47 @@
       .card-actions{padding:0 14px 14px 14px;}
       .card-btn{font-size:13px;}
     }
+
+    /* Мобильные кнопки навигации */
+.mobile-nav {
+  display: none;
+  position: fixed;
+  bottom: 24px;
+  left: 0;
+  right: 0;
+  justify-content: center;
+  gap: 20px;
+  z-index: 80;
+  background: transparent;
+  pointer-events: none;
+}
+.mobile-nav button {
+  pointer-events: auto;
+  font-family: "Montserrat", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  font-weight: 600;
+  font-size: 18px;
+  padding: 12px 24px;
+  border-radius: 48px;
+  border: none;
+  background: #111827;
+  color: white;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+  cursor: pointer;
+  transition: 0.1s ease;
+}
+.mobile-nav button:active { transform: scale(0.96); background: #dc2626; }
+.mobile-nav button:disabled {
+  opacity: 0.4;
+  transform: none;
+  cursor: default;
+  background: #111827;
+}
+
+@media (max-width: 768px) {
+  .mobile-nav { display: flex; }
+  .scrolly { pointer-events: none; }
+  .step { height: auto; min-height: 65vh; pointer-events: none; }
+}
   </style>
 </head>
 
@@ -2071,6 +2112,114 @@
     });
   }
   bootFirstStep();
+
+// ----- 1. НЕРАЗРЫВНЫЕ ПРОБЕЛЫ -----
+(function() {
+  const words = ['в', 'на', 'с', 'к', 'у', 'о', 'об', 'под', 'над', 'за', 'перед', 'через', 'из', 'и', 'а', 'но', 'да', 'или', 'либо', 'то', 'как', 'что', 'чтобы', 'потому', 'также', 'так', 'если', 'когда', 'будто', 'словно', 'чем', 'пусть', 'хоть'];
+  const regex = new RegExp('(^|\\s)(' + words.join('|') + ')(\\s+)', 'giu');
+
+  function replaceSpaces(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const newText = node.nodeValue.replace(regex, (m, lead, word) => (lead || '') + word + '\u00A0');
+      if (newText !== node.nodeValue) node.nodeValue = newText;
+    } else if (node.nodeType === Node.ELEMENT_NODE && !['SCRIPT','STYLE','TEXTAREA','INPUT','CODE','PRE'].includes(node.tagName)) {
+      node.childNodes.forEach(replaceSpaces);
+    }
+  }
+
+  const apply = () => replaceSpaces(document.body);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+  else apply();
+
+  new MutationObserver(muts => {
+    muts.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 1) replaceSpaces(n); }));
+  }).observe(document.body, { childList: true, subtree: true });
+})();
+
+// ----- 2. МОБИЛЬНАЯ НАВИГАЦИЯ (отключаем scrollama на телефоне) -----
+function isMobile() { return window.innerWidth <= 768; }
+
+let mobileActive = false;
+let mobileStepsList = [];
+let mobileCurrentIndex = 0;
+
+function buildMobileSteps() {
+  const steps = document.querySelectorAll('.step');
+  mobileStepsList = Array.from(steps).map(step => step.dataset.step).filter(id => id && id !== 'end');
+  mobileCurrentIndex = mobileStepsList.indexOf(CURRENT_STEP);
+  if (mobileCurrentIndex === -1 && mobileStepsList.length) mobileCurrentIndex = 0;
+  updateMobileButtons();
+}
+
+function updateMobileButtons() {
+  const prevBtn = document.getElementById('mobilePrevBtn');
+  const nextBtn = document.getElementById('mobileNextBtn');
+  if (!prevBtn || !nextBtn) return;
+  prevBtn.disabled = (mobileCurrentIndex <= 0);
+  nextBtn.disabled = (mobileCurrentIndex >= mobileStepsList.length - 1);
+}
+
+function goMobileStep(delta) {
+  let newIndex = mobileCurrentIndex + delta;
+  if (newIndex < 0) newIndex = 0;
+  if (newIndex >= mobileStepsList.length) newIndex = mobileStepsList.length - 1;
+  if (newIndex === mobileCurrentIndex) return;
+  mobileCurrentIndex = newIndex;
+  const stepId = mobileStepsList[mobileCurrentIndex];
+  if (stepId && typeof activate === 'function') {
+    activate(stepId);
+    // дополнительно прокручиваем к началу контента
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  updateMobileButtons();
+}
+
+function initMobileNavigation() {
+  const prevBtn = document.getElementById('mobilePrevBtn');
+  const nextBtn = document.getElementById('mobileNextBtn');
+  if (prevBtn) prevBtn.onclick = () => goMobileStep(-1);
+  if (nextBtn) nextBtn.onclick = () => goMobileStep(1);
+  buildMobileSteps();
+  // следим за изменением шага из scrollama (на десктопе), чтобы синхронизировать индекс
+  const originalActivate = window.activate;
+  if (originalActivate) {
+    window.activate = function(stepId) {
+      originalActivate(stepId);
+      if (isMobile()) {
+        const idx = mobileStepsList.indexOf(stepId);
+        if (idx !== -1) mobileCurrentIndex = idx;
+        updateMobileButtons();
+      }
+    };
+  }
+}
+
+// запускаем мобильный режим при загрузке и изменении размера окна
+function toggleMobileMode() {
+  const mobile = isMobile();
+  const nav = document.getElementById('mobileNav');
+  if (nav) nav.style.display = mobile ? 'flex' : 'none';
+  if (mobile && !mobileActive) {
+    mobileActive = true;
+    initMobileNavigation();
+    // отключаем scrollama на мобилке (просто не вызываем его)
+    if (window.scroller && window.scroller.disable) window.scroller.disable();
+  } else if (!mobile && mobileActive) {
+    mobileActive = false;
+    if (window.scroller && window.scroller.enable) window.scroller.enable();
+  }
+}
+
+window.addEventListener('resize', () => {
+  toggleMobileMode();
+  if (isMobile()) buildMobileSteps();
+});
+toggleMobileMode();
+
 </script>
+<div class="mobile-nav" id="mobileNav">
+  <button id="mobilePrevBtn">← Назад</button>
+  <button id="mobileNextBtn">Вперёд →</button>
+</div>
 </body>
 </html>
